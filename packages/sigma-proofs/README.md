@@ -1,13 +1,19 @@
-# @aspect/sigma-proofs
+# sigma-proofs
 
-Interactive Sigma Protocols for zero-knowledge proofs.
+Sigma Protocols for zero-knowledge proofs in TypeScript.
 
-Implements [draft-irtf-cfrg-sigma-protocols-01](https://www.ietf.org/archive/id/draft-irtf-cfrg-sigma-protocols-01.txt).
+**Specification:** [draft-irtf-cfrg-sigma-protocols-01](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/)
+
+**Features:**
+- LinearRelation constraint system for composable proofs
+- Interactive SchnorrProof with prover/verifier/simulator
+- Non-interactive proofs via Fiat-Shamir (SHAKE128 sponge)
+- Ristretto255 and P-256 ciphersuites
 
 ## Installation
 
 ```bash
-npm install @aspect/sigma-proofs
+npm install sigma-proofs
 ```
 
 ## Quick Start
@@ -15,7 +21,7 @@ npm install @aspect/sigma-proofs
 Prove knowledge of a discrete logarithm: `PoK{(x): X = x·G}`
 
 ```typescript
-import { LinearRelation, SchnorrProof, ristretto255 } from '@aspect/sigma-proofs';
+import { LinearRelation, SchnorrProof, ristretto255 } from 'sigma-proofs';
 
 const group = ristretto255;
 

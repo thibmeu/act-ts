@@ -9,6 +9,7 @@
 
 import type { Group, GroupElement } from './group.js';
 import { LinearMap, type LinearCombination } from './linear-map.js';
+import { concat } from './utils.js';
 
 /** Maximum number of scalars to prevent DoS */
 const MAX_SCALARS = 1024;
@@ -21,20 +22,6 @@ const MAX_ELEMENTS = 1024;
 function u32le(value: number): Uint8Array {
   const result = new Uint8Array(4);
   new DataView(result.buffer).setUint32(0, value, true); // little-endian
-  return result;
-}
-
-/**
- * Concatenate multiple Uint8Arrays.
- */
-function concat(...arrays: Uint8Array[]): Uint8Array {
-  const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const arr of arrays) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
   return result;
 }
 

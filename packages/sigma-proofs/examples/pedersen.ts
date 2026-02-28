@@ -70,7 +70,7 @@ console.log('Valid:', valid);
 
 // === Application: Prove equality of committed values ===
 console.log('\n=== Extended: Prove two commitments hide same value ===');
-console.log('PoK{(x, r₁, r₂): C₁ = x·G + r₁·H ∧ C₂ = x·G + r₂·H}\n');
+console.log('PoK{(x, r1, r2): C1 = x*G + r1*H AND C2 = x*G + r2*H}\n');
 
 // Two commitments to the same value x
 const r1 = group.randomScalar();
@@ -84,13 +84,13 @@ const relation2 = new LinearRelation(group);
 const [varX2, varR1, varR2] = relation2.allocateScalars(3);
 const [varG3, varH3, varC1, varC2_2] = relation2.allocateElements(4);
 
-// C₁ = x·G + r₁·H
+// C1 = x*G + r1*H
 relation2.appendEquation(varC1, [
   [varX2, varG3],
   [varR1, varH3],
 ]);
 
-// C₂ = x·G + r��·H (same varX2!)
+// C2 = x*G + r2*H (same varX2!)
 relation2.appendEquation(varC2_2, [
   [varX2, varG3],
   [varR2, varH3],
@@ -110,6 +110,6 @@ const challenge2 = group.randomScalar();
 const response2 = prover2.respond(challenge2);
 const valid2 = proof2.verify(prover2.commitment, challenge2, response2);
 
-console.log('Proves: C₁ and C�� commit to same value');
+console.log('Proves: C1 and C2 commit to same value');
 console.log('Without revealing: the value itself or the randomness');
 console.log('Valid:', valid2);

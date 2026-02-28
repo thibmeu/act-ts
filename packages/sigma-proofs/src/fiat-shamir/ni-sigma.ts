@@ -7,15 +7,18 @@
 import type { Group, GroupElement, Scalar } from '../group.js';
 import type { LinearRelation } from '../linear-relation.js';
 import { SchnorrProof } from '../schnorr.js';
-import { asciiToBytes } from '../utils.js';
+import { asciiToBytes, concat } from '../utils.js';
 import { Shake128Sponge, type DuplexSponge } from './sponge.js';
 import { ByteCodec, type Codec } from './codec.js';
+
+/** Maximum sessionId length to prevent DoS */
+const MAX_SESSION_ID_LENGTH = 65536;
 
 /**
  * Options for proof generation/verification.
  */
 export interface NIOptions {
-  /** Session identifier for domain separation */
+  /** Session identifier for domain separation (max 64KB) */
   sessionId?: Uint8Array;
   /**
    * Protocol identifier for domain separation (64 bytes).
@@ -44,20 +47,6 @@ export interface NIProofBatchable {
   commitment: readonly GroupElement[];
   /** The prover's response */
   response: readonly Scalar[];
-}
-
-/**
- * Concatenate Uint8Arrays.
- */
-function concat(...arrays: Uint8Array[]): Uint8Array {
-  const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const arr of arrays) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
-  return result;
 }
 
 /**
@@ -144,6 +133,9 @@ export class NISigmaProtocol {
       throw new Error(`protocolId must be 64 bytes, got ${protocolId.length}`);
     }
     const sessionId = options.sessionId ?? new Uint8Array(0);
+    if (sessionId.length > MAX_SESSION_ID_LENGTH) {
+      throw new Error(`sessionId too large: max ${MAX_SESSION_ID_LENGTH} bytes`);
+    }
     const instanceLabel = relation.getInstanceLabel();
 
     const sponge = initializeSponge(protocolId, sessionId, instanceLabel);

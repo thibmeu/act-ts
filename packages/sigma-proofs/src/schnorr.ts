@@ -184,7 +184,7 @@ export class SchnorrProof {
 
     const commitment: GroupElement[] = [];
     for (let i = 0; i < this.relation.numConstraints; i++) {
-      const slice = data.slice(i * elementSize, (i + 1) * elementSize);
+      const slice = data.subarray(i * elementSize, (i + 1) * elementSize);
       commitment.push(this.relation.group.elementFromBytes(slice));
     }
     return commitment;
@@ -201,7 +201,7 @@ export class SchnorrProof {
 
     const response: Scalar[] = [];
     for (let i = 0; i < this.relation.numScalars; i++) {
-      const slice = data.slice(i * scalarSize, (i + 1) * scalarSize);
+      const slice = data.subarray(i * scalarSize, (i + 1) * scalarSize);
       response.push(this.relation.group.scalarFromBytes(slice));
     }
     return response;
