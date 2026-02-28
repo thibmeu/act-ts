@@ -1,10 +1,24 @@
 # act-ts: Anonymous Credit Tokens in TypeScript
 
+> **Warning**
+> This software is experimental and has not been audited. The underlying cryptographic specifications are IETF drafts subject to change. Use at your own risk.
+
 TypeScript implementation of Anonymous Credit Tokens (ACT) for privacy-preserving credit systems.
 
 **Specification:** Implements [draft-schlesinger-cfrg-act](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/) and [draft-schlesinger-privacypass-act](https://datatracker.ietf.org/doc/draft-schlesinger-privacypass-act/).
 
 **Target Environments:** Browser, Cloudflare Workers, Node.js
+
+## Table of Contents
+
+* [Packages](#packages)
+* [What is ACT?](#what-is-act)
+* [Installation](#installation)
+* [Quick Example](#quick-example)
+* [Development](#development)
+* [Security Considerations](#security-considerations)
+* [Related Projects](#related-projects)
+* [License](#license)
 
 ## Packages
 
@@ -96,11 +110,35 @@ docs/
 - [ ] act: Migration to sigma-draft-compliance (pending test vectors)
 - [ ] privacypass-act: Token challenge/response integration
 
+## Security Considerations
+
+This software has not been audited. Please use at your sole discretion. With this in mind, act-ts security relies on the following:
+
+* [Anonymous Credit Tokens](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/) specification by Samuel Schlesinger and Jonathan Katz, based on keyed-verification anonymous credentials and BBS-style signatures
+* [Sigma Protocols](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/) specification for zero-knowledge proofs
+* [@noble/curves](https://github.com/paulmillr/noble-curves) for elliptic curve operations (Ristretto255, P-256)
+* [@noble/hashes](https://github.com/paulmillr/noble-hashes) for cryptographic hash functions
+
+### Limitations
+
+* **Not quantum-resistant**: Based on discrete logarithm assumptions
+* **Draft specifications**: Protocol may change before standardization
+* **No constant-time guarantees**: JavaScript runtime limitations (see [@noble/curves documentation](https://github.com/paulmillr/noble-curves#security))
+
+### Reporting Vulnerabilities
+
+If you discover a security vulnerability, please report it via GitHub Security Advisories or contact the maintainers directly. Do not open public issues for security vulnerabilities.
+
 ## Related Projects
 
-- [anonymous-credit-tokens](https://github.com/AquilaCrypto/anonymous-credit-tokens) - Rust reference implementation
-- [privacypass-ts](https://github.com/cloudflare/privacypass-ts) - Privacy Pass TypeScript library
+* [anonymous-credit-tokens](https://github.com/AquilaCrypto/anonymous-credit-tokens) - Rust reference implementation
+* [privacypass-ts](https://github.com/cloudflare/privacypass-ts) - Privacy Pass TypeScript library
+* [Privacy Pass](https://www.rfc-editor.org/rfc/rfc9576.html) - RFC 9576 architecture
 
 ## License
 
-[Apache-2.0](LICENSE)
+This project is under the [Apache-2.0](LICENSE) license.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you shall be Apache-2.0 licensed as above, without any additional terms or conditions.
