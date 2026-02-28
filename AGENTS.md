@@ -1,5 +1,7 @@
 # Agent Guidelines
 
+**Generated:** 2026-02-28 | **Commit:** bef3dff | **Branch:** main
+
 Instructions for AI agents working on this codebase.
 
 ---
@@ -24,10 +26,16 @@ npm run format        # Auto-fix lint/format issues
 ### Project Structure
 
 ```
-packages/
-  sigma-proofs/       # draft-irtf-cfrg-sigma-protocols-01
-  act/                # draft-schlesinger-cfrg-act-01
-  privacypass-act/    # draft-schlesinger-privacypass-act-01
+act-ts/
+  packages/
+    sigma-proofs/       # Sigma protocols (109 tests) - COMPLETE
+    act/                # ACT core (49 tests) - current draft
+    privacypass-act/    # Privacy Pass integration - NOT STARTED
+  docs/
+    ARCHITECTURE.md     # Technical design
+    VNEXT_MIGRATION.md  # Upcoming spec changes
+    reviewers/          # Code review checklists
+  AGENTS.md             # This file
 ```
 
 ---
@@ -45,6 +53,7 @@ packages/
 ## Documentation
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Technical design, type system, protocol flows
+- **[docs/VNEXT_MIGRATION.md](docs/VNEXT_MIGRATION.md)** - Migration plan for sigma-draft-compliance branch
 
 ---
 
@@ -114,4 +123,32 @@ See [docs/reviewers/](docs/reviewers/) for detailed checklists.
 | Package         | Purpose                                      |
 | --------------- | -------------------------------------------- |
 | `@noble/curves` | Ristretto255, P-256, scalar/point arithmetic |
-| `@noble/hashes` | Blake3 (XOF), SHA-512                        |
+| `@noble/hashes` | BLAKE3, SHA-512, SHAKE128                    |
+| `cbor2`         | CBOR encoding for ACT wire format            |
+
+---
+
+## Where to Look
+
+| Task | Location | Notes |
+|------|----------|-------|
+| Add group operation | `sigma-proofs/src/group.ts` | Implement Group interface |
+| Add ciphersuite | `sigma-proofs/src/ciphersuites/` | See ristretto255.ts pattern |
+| Modify proofs | `sigma-proofs/src/schnorr.ts` | LinearRelation + SchnorrProof |
+| Fiat-Shamir | `sigma-proofs/src/fiat-shamir/` | Sponge, codec, NISigmaProtocol |
+| ACT issuance | `act/src/issuance.ts` | Request/response/verify |
+| ACT spending | `act/src/spend.ts` | Range proofs, refunds |
+| Wire format | `act/src/cbor.ts` | Encode/decode messages |
+| Test vectors | `*/test/vectors/` | JSON files from specs |
+
+---
+
+## Current Status
+
+| Package | Status | Tests | Blocked By |
+|---------|--------|-------|------------|
+| sigma-proofs | Complete | 109 | - |
+| act | Current draft | 49 | Waiting for new spec test vectors |
+| privacypass-act | Placeholder | 0 | act vnext completion |
+
+**Next milestone:** ACT migration to `sigma-draft-compliance` branch (see VNEXT_MIGRATION.md)
