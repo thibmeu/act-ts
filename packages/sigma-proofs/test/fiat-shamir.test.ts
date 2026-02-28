@@ -331,3 +331,131 @@ describe('NISigmaProtocol', () => {
     });
   });
 });
+
+describe('Instance Labels', () => {
+  it('produces deterministic labels for same relation', () => {
+    const x = ristretto255.randomScalar();
+    const G = ristretto255.generator();
+    const X = G.multiply(x);
+
+    // Build same relation twice
+    const relation1 = new LinearRelation(ristretto255);
+    const [varX1] = relation1.allocateScalars(1);
+    const [varG1, varXPoint1] = relation1.allocateElements(2);
+    relation1.appendEquation(varXPoint1, [[varX1, varG1]]);
+    relation1.setElements([
+      [varG1, G],
+      [varXPoint1, X],
+    ]);
+
+    const relation2 = new LinearRelation(ristretto255);
+    const [varX2] = relation2.allocateScalars(1);
+    const [varG2, varXPoint2] = relation2.allocateElements(2);
+    relation2.appendEquation(varXPoint2, [[varX2, varG2]]);
+    relation2.setElements([
+      [varG2, G],
+      [varXPoint2, X],
+    ]);
+
+    expect(relation1.getInstanceLabel()).toEqual(relation2.getInstanceLabel());
+  });
+
+  it('produces different labels for different statements', () => {
+    const x1 = ristretto255.randomScalar();
+    const x2 = ristretto255.randomScalar();
+    const G = ristretto255.generator();
+    const X1 = G.multiply(x1);
+    const X2 = G.multiply(x2);
+
+    const relation1 = createSchnorrRelation(ristretto255, x1);
+    const relation2 = createSchnorrRelation(ristretto255, x2);
+
+    // Different public keys should produce different labels
+    expect(relation1.getInstanceLabel()).not.toEqual(
+      relation2.getInstanceLabel()
+    );
+  });
+
+  it('label is order-independent for element allocation', () => {
+    // DLEQ with two different allocation orders should have same label
+    const x = ristretto255.randomScalar();
+    const G = ristretto255.generator();
+    const h = ristretto255.randomScalar();
+    const H = G.multiply(h);
+    const X = G.multiply(x);
+    const Y = H.multiply(x);
+
+    // Order A: allocate [G, H, X, Y] together
+    const relationA = new LinearRelation(ristretto255);
+    const [varXa] = relationA.allocateScalars(1);
+    const [varGa, varHa, varXPointA, varYPointA] =
+      relationA.allocateElements(4);
+    relationA.appendEquation(varXPointA, [[varXa, varGa]]);
+    relationA.appendEquation(varYPointA, [[varXa, varHa]]);
+    relationA.setElements([
+      [varGa, G],
+      [varHa, H],
+      [varXPointA, X],
+      [varYPointA, Y],
+    ]);
+    relationA.setImage([
+      [0, X],
+      [1, Y],
+    ]);
+
+    // Order B: allocate [G, X], then [H, Y] separately
+    const relationB = new LinearRelation(ristretto255);
+    const [varXb] = relationB.allocateScalars(1);
+    const [varGb, varXPointB] = relationB.allocateElements(2);
+    const [varHb, varYPointB] = relationB.allocateElements(2);
+    relationB.appendEquation(varXPointB, [[varXb, varGb]]);
+    relationB.appendEquation(varYPointB, [[varXb, varHb]]);
+    relationB.setElements([
+      [varGb, G],
+      [varXPointB, X],
+      [varHb, H],
+      [varYPointB, Y],
+    ]);
+    relationB.setImage([
+      [0, X],
+      [1, Y],
+    ]);
+
+    // Labels should be identical despite different allocation order
+    expect(relationA.getInstanceLabel()).toEqual(relationB.getInstanceLabel());
+  });
+
+  it('different statements produce different proofs', () => {
+    const x = ristretto255.randomScalar();
+    const G = ristretto255.generator();
+    const X = G.multiply(x);
+
+    // Same witness, but different public statement (add H*0 term)
+    const relation1 = createSchnorrRelation(ristretto255, x);
+
+    // Different relation structure
+    const relation2 = new LinearRelation(ristretto255);
+    const [varX2, varY2] = relation2.allocateScalars(2);
+    const [varG2, varH2, varXPoint2] = relation2.allocateElements(3);
+    relation2.appendEquation(varXPoint2, [
+      [varX2, varG2],
+      [varY2, varH2],
+    ]);
+    const H = G.multiply(ristretto255.randomScalar());
+    relation2.setElements([
+      [varG2, G],
+      [varH2, H],
+      [varXPoint2, X],
+    ]);
+    relation2.setImage([[0, X]]);
+
+    const ni1 = new NISigmaProtocol(relation1);
+    const ni2 = new NISigmaProtocol(relation2);
+
+    const proof1 = ni1.prove([x]);
+    const proof2 = ni2.prove([x, ristretto255.scalarFromBigint(0n)]);
+
+    // Different instance labels should produce different challenges
+    expect(proof1.challenge.equals(proof2.challenge)).toBe(false);
+  });
+});

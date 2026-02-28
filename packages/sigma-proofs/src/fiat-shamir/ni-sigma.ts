@@ -55,29 +55,59 @@ function concat(...arrays: Uint8Array[]): Uint8Array {
 
 /**
  * I2OSP: Integer to Octet String Primitive (RFC 8017).
+ * Encodes as big-endian.
  */
 function i2osp(value: number, length: number): Uint8Array {
   const result = new Uint8Array(length);
-  for (let i = length - 1; i >= 0 && value > 0; i--) {
-    result[i] = value & 0xff;
-    value >>>= 8;
+  const view = new DataView(result.buffer);
+  if (length === 4) {
+    view.setUint32(0, value, false); // big-endian
+  } else if (length === 2) {
+    view.setUint16(0, value, false);
+  } else {
+    // Fallback for other lengths
+    for (let i = length - 1; i >= 0 && value > 0; i--) {
+      result[i] = value & 0xff;
+      value >>>= 8;
+    }
   }
   return result;
 }
 
 /**
- * Compute the initialization vector (Section 4 of draft-irtf-cfrg-fiat-shamir-01).
- *
- * IV = DuplexSponge.init([0]*64)
- *      .absorb(I2OSP(len(protocol_id), 4) || protocol_id)
- *      .absorb(I2OSP(len(session_id), 4) || session_id)
- *      .squeeze(64)
+ * Default protocol ID matching sigma-rs/sigma-hs.
+ * "ietf sigma proof linear relation" + 32 zero bytes = 64 bytes total
  */
-function computeIV(protocolId: Uint8Array, sessionId: Uint8Array): Uint8Array {
-  const sponge = new Shake128Sponge(new Uint8Array(64));
-  sponge.absorb(concat(i2osp(protocolId.length, 4), protocolId));
+const DEFAULT_PROTOCOL_ID = (() => {
+  const prefix = asciiToBytes('ietf sigma proof linear relation');
+  const result = new Uint8Array(64);
+  result.set(prefix);
+  // Rest is zeros
+  return result;
+})();
+
+/**
+ * Initialize a Fiat-Shamir sponge per sigma-rs/sigma-hs.
+ *
+ * 1. Use protocolId directly as the sponge IV
+ * 2. Absorb length-prefixed sessionId
+ * 3. Absorb length-prefixed instanceLabel
+ *
+ * @param protocolId - Protocol identifier (64 bytes)
+ * @param sessionId - Session identifier
+ * @param instanceLabel - Canonical instance label from LinearRelation
+ */
+function initializeSponge(
+  protocolId: Uint8Array,
+  sessionId: Uint8Array,
+  instanceLabel: Uint8Array
+): Shake128Sponge {
+  const sponge = new Shake128Sponge(protocolId);
+  // Absorb length-prefixed session ID (big-endian length per sigma-hs)
   sponge.absorb(concat(i2osp(sessionId.length, 4), sessionId));
-  return sponge.squeeze(64);
+  // Absorb length-prefixed instance label
+  sponge.absorb(concat(i2osp(instanceLabel.length, 4), instanceLabel));
+  return sponge;
 }
 
 /**
@@ -102,13 +132,14 @@ export class NISigmaProtocol {
     this.group = relation.group;
     this.sigma = new SchnorrProof(relation);
 
-    // Compute protocol ID from relation structure
-    // TODO: Include instance label (serialized statement) per spec
-    const protocolId = asciiToBytes(`NISigmaProtocol-${this.group.name}`);
     const sessionId = options.sessionId ?? new Uint8Array(0);
+    const instanceLabel = relation.getInstanceLabel();
 
-    const iv = computeIV(protocolId, sessionId);
-    const sponge = new Shake128Sponge(iv);
+    const sponge = initializeSponge(
+      DEFAULT_PROTOCOL_ID,
+      sessionId,
+      instanceLabel
+    );
     this.codec = new ByteCodec(this.group, sponge);
   }
 

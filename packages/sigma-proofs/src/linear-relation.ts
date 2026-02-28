@@ -16,6 +16,29 @@ const MAX_SCALARS = 1024;
 const MAX_ELEMENTS = 1024;
 
 /**
+ * Encode a 32-bit integer as little-endian bytes.
+ */
+function u32le(value: number): Uint8Array {
+  const result = new Uint8Array(4);
+  new DataView(result.buffer).setUint32(0, value, true); // little-endian
+  return result;
+}
+
+/**
+ * Concatenate multiple Uint8Arrays.
+ */
+function concat(...arrays: Uint8Array[]): Uint8Array {
+  const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
+}
+
+/**
  * Encodes a proof statement for knowledge of a preimage under a linear map.
  *
  * @example
@@ -30,7 +53,10 @@ const MAX_ELEMENTS = 1024;
  */
 export class LinearRelation {
   readonly linearMap: LinearMap;
+  /** Image elements (resolved from imageIndices) */
   readonly image: GroupElement[] = [];
+  /** Indices into groupElements for each equation's LHS */
+  readonly imageIndices: number[] = [];
 
   constructor(group: Group) {
     this.linearMap = new LinearMap(group);
@@ -117,6 +143,9 @@ export class LinearRelation {
 
     this.linearMap.append(lc);
 
+    // Store the index for instance label computation
+    this.imageIndices.push(lhs);
+
     // The image will be set later via setElements for lhs
     // For now, push identity as placeholder
     this.image.push(this.linearMap.group.identity());
@@ -150,5 +179,107 @@ export class LinearRelation {
       }
       this.image[index] = element;
     }
+  }
+
+  /**
+   * Compute a canonical instance label for Fiat-Shamir domain separation.
+   *
+   * This matches sigma-rs's `CanonicalLinearRelation::label()` format.
+   * The canonicalization rebuilds the group element list by walking equations
+   * in order, making the label independent of element allocation order.
+   *
+   * Output format:
+   * ```
+   * [num_equations: u32 LE]
+   * per equation:
+   *   [image_index: u32 LE]
+   *   [num_terms: u32 LE]
+   *   per term:
+   *     [scalar_index: u32 LE]
+   *     [group_index: u32 LE]
+   * [all canonical group elements concatenated]
+   * ```
+   *
+   * @returns The canonical instance label as bytes
+   */
+  getInstanceLabel(): Uint8Array {
+    const lm = this.linearMap;
+    const orig = lm.groupElements;
+
+    // Mapping from original index to canonical index
+    const mapping = new Map<number, number>();
+    // Canonical element list
+    const canonElems: GroupElement[] = [];
+
+    // Remap an original index to canonical, appending if unseen
+    const remap = (origIdx: number): number => {
+      const existing = mapping.get(origIdx);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const newIdx = canonElems.length;
+      mapping.set(origIdx, newIdx);
+      const elem = orig[origIdx];
+      if (elem === undefined) {
+        throw new Error(`Invalid element index ${origIdx}`);
+      }
+      canonElems.push(elem);
+      return newIdx;
+    };
+
+    // Process each equation, building canonical structure
+    const canonEqs: Array<{ imgIdx: number; terms: Array<[number, number]> }> =
+      [];
+
+    for (let eqIdx = 0; eqIdx < lm.linearCombinations.length; eqIdx++) {
+      const lc = lm.linearCombinations[eqIdx];
+      if (lc === undefined) {
+        throw new Error(`Invalid equation index ${eqIdx}`);
+      }
+
+      // Map each RHS term's element index
+      const terms: Array<[number, number]> = [];
+      for (let tIdx = 0; tIdx < lc.elementIndices.length; tIdx++) {
+        const origElemIdx = lc.elementIndices[tIdx];
+        const scalarIdx = lc.scalarIndices[tIdx];
+        if (origElemIdx === undefined || scalarIdx === undefined) {
+          throw new Error('Invalid term indices');
+        }
+        const newElemIdx = remap(origElemIdx);
+        terms.push([scalarIdx, newElemIdx]);
+      }
+
+      // Map the image element index
+      const origImgIdx = this.imageIndices[eqIdx];
+      if (origImgIdx === undefined) {
+        throw new Error(`Invalid image index for equation ${eqIdx}`);
+      }
+      const newImgIdx = remap(origImgIdx);
+
+      canonEqs.push({ imgIdx: newImgIdx, terms });
+    }
+
+    // Serialize
+    const parts: Uint8Array[] = [];
+
+    // Header: number of equations
+    parts.push(u32le(canonEqs.length));
+
+    // Each equation
+    for (const eq of canonEqs) {
+      parts.push(u32le(eq.imgIdx));
+      parts.push(u32le(eq.terms.length));
+      for (const [sIdx, gIdx] of eq.terms) {
+        parts.push(u32le(sIdx));
+        parts.push(u32le(gIdx));
+      }
+    }
+
+    // All canonical group elements
+    for (const elem of canonElems) {
+      parts.push(elem.toBytes());
+    }
+
+    return concat(...parts);
   }
 }
