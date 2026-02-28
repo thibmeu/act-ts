@@ -48,20 +48,17 @@ relation.setElements([
   [varXPoint, X],
   [varYPoint, Y],
 ]);
-relation.setImage([
-  [0, X],
-  [1, Y],
-]);
+// Image derived automatically from appendEquation LHS elements
 
 // === Proof ===
 
 const proof = new SchnorrProof(relation);
-const [commitment, proverState] = proof.proverCommit([x]);
+const prover = proof.proverCommit([x]);
 const challenge = group.randomScalar();
-const response = proof.proverResponse(proverState, challenge);
-const valid = proof.verify(commitment, challenge, response);
+const response = prover.respond(challenge);
+const valid = proof.verify(prover.commitment, challenge, response);
 
-console.log('Commitment elements:', commitment.length);
+console.log('Commitment elements:', prover.commitment.length);
 console.log('Response scalars:', response.length);
 console.log('Valid:', valid);
 
@@ -90,16 +87,13 @@ relation2.setElements([
   [varX2Point, X2],
   [varY2Point, Y2],
 ]);
-relation2.setImage([
-  [0, X2],
-  [1, Y2],
-]);
+// Image derived automatically
 
 const proof2 = new SchnorrProof(relation2);
 // Using x1 as witness, but Y2 = x2·H not x1·H
-const [commitment2, proverState2] = proof2.proverCommit([x1]);
+const prover2 = proof2.proverCommit([x1]);
 const challenge2 = group.randomScalar();
-const response2 = proof2.proverResponse(proverState2, challenge2);
-const valid2 = proof2.verify(commitment2, challenge2, response2);
+const response2 = prover2.respond(challenge2);
+const valid2 = proof2.verify(prover2.commitment, challenge2, response2);
 
 console.log('Valid (should be false):', valid2);

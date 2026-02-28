@@ -51,20 +51,20 @@ relation.setElements([
   [varH, H],
   [varC, C],
 ]);
-relation.setImage([[0, C]]);
+// Image derived automatically from varC in appendEquation
 
 // === Proof ===
 
 const proof = new SchnorrProof(relation);
 
 // Witness: [x, r]
-const [commitment, proverState] = proof.proverCommit([x, r]);
+const prover = proof.proverCommit([x, r]);
 const challenge = group.randomScalar();
-const response = proof.proverResponse(proverState, challenge);
-const valid = proof.verify(commitment, challenge, response);
+const response = prover.respond(challenge);
+const valid = proof.verify(prover.commitment, challenge, response);
 
 console.log('Witness scalars:', 2);
-console.log('Commitment elements:', commitment.length);
+console.log('Commitment elements:', prover.commitment.length);
 console.log('Response scalars:', response.length);
 console.log('Valid:', valid);
 
@@ -102,16 +102,13 @@ relation2.setElements([
   [varC1, C1],
   [varC2_2, C2],
 ]);
-relation2.setImage([
-  [0, C1],
-  [1, C2],
-]);
+// Image derived automatically
 
 const proof2 = new SchnorrProof(relation2);
-const [commitment2, proverState2] = proof2.proverCommit([x, r1, r2]);
+const prover2 = proof2.proverCommit([x, r1, r2]);
 const challenge2 = group.randomScalar();
-const response2 = proof2.proverResponse(proverState2, challenge2);
-const valid2 = proof2.verify(commitment2, challenge2, response2);
+const response2 = prover2.respond(challenge2);
+const valid2 = proof2.verify(prover2.commitment, challenge2, response2);
 
 console.log('Proves: C₁ and C�� commit to same value');
 console.log('Without revealing: the value itself or the randomness');

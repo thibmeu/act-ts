@@ -11,16 +11,19 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
     "test": "vitest"
   },
   "license": "Apache-2.0",
   "dependencies": {
-    "sigma-proofs": "*",
     "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^1.7.2"
+    "@noble/hashes": "^1.7.2",
+    "cbor2": "^2.2.1",
+    "sigma-proofs": "*"
   },
   "devDependencies": {
     "vitest": "^3.2.3"

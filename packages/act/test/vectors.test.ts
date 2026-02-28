@@ -1,11 +1,8 @@
 /**
  * Test vectors from IETF draft-schlesinger-cfrg-act-01 Appendix A
  *
- * These test vectors use CBOR wire format. We test what we can verify:
- * - Parameter generation (deterministic from domain separator)
- * - Proof verification (given known good proofs)
- *
- * Full test vector validation requires CBOR parsing which is deferred.
+ * These test vectors validate CBOR wire format encoding/decoding
+ * and cross-implementation compatibility.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -13,6 +10,24 @@ import testVectors from './vectors/testACT.json';
 import {
   generateParameters,
   group,
+  decodeKeyPair,
+  decodePublicKey,
+  decodeIssuanceRequest,
+  decodeIssuanceResponse,
+  decodeCreditToken,
+  decodeSpendProof,
+  decodeRefund,
+  decodePreIssuance,
+  decodePreRefund,
+  encodeIssuanceRequest,
+  encodeIssuanceResponse,
+  encodeCreditToken,
+  encodeSpendProof,
+  encodeRefund,
+  encodePreIssuance,
+  encodePreRefund,
+  encodeKeyPair,
+  encodePublicKey,
 } from '../src/index.js';
 import { bytesToHex, hexToBytes } from '@noble/curves/utils.js';
 
@@ -60,11 +75,40 @@ describe('ACT Test Vectors (Appendix A)', () => {
   });
 
   describe('A.2 Key Generation', () => {
-    // The test vectors include CBOR-encoded keys
-    // sk_cbor encodes {1: sk_bytes, 2: pk_bytes}
-    // pk_cbor encodes pk_bytes
+    it('decodes key pair from CBOR', () => {
+      const data = hexToBytes(testVectors.key_generation.sk_cbor);
+      const { privateKey, publicKey } = decodeKeyPair(data);
 
-    it.todo('decodes and validates key pair from CBOR (needs CBOR parser)');
+      expect(privateKey.x).toBeDefined();
+      expect(publicKey.W).toBeDefined();
+      expect(publicKey.W.isIdentity()).toBe(false);
+
+      // Verify pk = G * sk
+      const derived = group.generator().multiply(privateKey.x);
+      expect(derived.equals(publicKey.W)).toBe(true);
+
+      console.log('Key pair:');
+      console.log('  sk:', bytesToHex(privateKey.x.toBytes()));
+      console.log('  pk:', bytesToHex(publicKey.W.toBytes()));
+    });
+
+    it('decodes public key from CBOR', () => {
+      const data = hexToBytes(testVectors.key_generation.pk_cbor);
+      const publicKey = decodePublicKey(data);
+
+      expect(publicKey.W.isIdentity()).toBe(false);
+    });
+
+    it('round-trips key pair encoding', () => {
+      const data = hexToBytes(testVectors.key_generation.sk_cbor);
+      const { privateKey, publicKey } = decodeKeyPair(data);
+
+      const reencoded = encodeKeyPair(privateKey, publicKey);
+      const { privateKey: sk2, publicKey: pk2 } = decodeKeyPair(reencoded);
+
+      expect(sk2.x.equals(privateKey.x)).toBe(true);
+      expect(pk2.W.equals(publicKey.W)).toBe(true);
+    });
   });
 
   describe('A.3 Issuance', () => {
@@ -79,9 +123,98 @@ describe('ACT Test Vectors (Appendix A)', () => {
       expect(ctxBytes.every(b => b === 0)).toBe(true);
     });
 
-    it.todo('validates issuance request CBOR (needs CBOR parser)');
-    it.todo('validates issuance response CBOR (needs CBOR parser)');
-    it.todo('validates credit token CBOR (needs CBOR parser)');
+    it('decodes pre-issuance state from CBOR', () => {
+      const data = hexToBytes(testVectors.issuance.preissuance_cbor);
+      const state = decodePreIssuance(data);
+
+      expect(state.k).toBeDefined();
+      expect(state.r).toBeDefined();
+
+      console.log('Pre-issuance:');
+      console.log('  k:', bytesToHex(state.k.toBytes()));
+      console.log('  r:', bytesToHex(state.r.toBytes()));
+    });
+
+    it('decodes issuance request from CBOR', () => {
+      const data = hexToBytes(testVectors.issuance.issuance_request_cbor);
+      const request = decodeIssuanceRequest(data);
+
+      expect(request.K).toBeDefined();
+      expect(request.gamma).toBeDefined();
+      expect(request.kBar).toBeDefined();
+      expect(request.rBar).toBeDefined();
+
+      console.log('Issuance request:');
+      console.log('  K:', bytesToHex(request.K.toBytes()));
+      console.log('  gamma:', bytesToHex(request.gamma.toBytes()));
+    });
+
+    it('decodes issuance response from CBOR', () => {
+      const data = hexToBytes(testVectors.issuance.issuance_response_cbor);
+      const response = decodeIssuanceResponse(data);
+
+      expect(response.A).toBeDefined();
+      expect(response.e).toBeDefined();
+      expect(response.gammaResp).toBeDefined();
+      expect(response.z).toBeDefined();
+      expect(response.c).toBe(100n);
+      expect(response.ctx).toBeDefined();
+
+      console.log('Issuance response:');
+      console.log('  A:', bytesToHex(response.A.toBytes()));
+      console.log('  c:', response.c);
+    });
+
+    it('decodes credit token from CBOR', () => {
+      const data = hexToBytes(testVectors.issuance.credit_token_cbor);
+      const token = decodeCreditToken(data);
+
+      expect(token.A).toBeDefined();
+      expect(token.e).toBeDefined();
+      expect(token.k).toBeDefined();
+      expect(token.r).toBeDefined();
+      expect(token.c).toBe(100n);
+      expect(token.ctx).toBeDefined();
+
+      console.log('Credit token:');
+      console.log('  A:', bytesToHex(token.A.toBytes()));
+      console.log('  k (nullifier):', bytesToHex(token.k.toBytes()));
+      console.log('  c:', token.c);
+    });
+
+    it('round-trips issuance request encoding', () => {
+      const data = hexToBytes(testVectors.issuance.issuance_request_cbor);
+      const request = decodeIssuanceRequest(data);
+      const reencoded = encodeIssuanceRequest(request);
+      const decoded2 = decodeIssuanceRequest(reencoded);
+
+      expect(decoded2.K.equals(request.K)).toBe(true);
+      expect(decoded2.gamma.equals(request.gamma)).toBe(true);
+      expect(decoded2.kBar.equals(request.kBar)).toBe(true);
+      expect(decoded2.rBar.equals(request.rBar)).toBe(true);
+    });
+
+    it('round-trips issuance response encoding', () => {
+      const data = hexToBytes(testVectors.issuance.issuance_response_cbor);
+      const response = decodeIssuanceResponse(data);
+      const reencoded = encodeIssuanceResponse(response);
+      const decoded2 = decodeIssuanceResponse(reencoded);
+
+      expect(decoded2.A.equals(response.A)).toBe(true);
+      expect(decoded2.e.equals(response.e)).toBe(true);
+      expect(decoded2.c).toBe(response.c);
+    });
+
+    it('round-trips credit token encoding', () => {
+      const data = hexToBytes(testVectors.issuance.credit_token_cbor);
+      const token = decodeCreditToken(data);
+      const reencoded = encodeCreditToken(token);
+      const decoded2 = decodeCreditToken(reencoded);
+
+      expect(decoded2.A.equals(token.A)).toBe(true);
+      expect(decoded2.k.equals(token.k)).toBe(true);
+      expect(decoded2.c).toBe(token.c);
+    });
   });
 
   describe('A.4 Spending', () => {
@@ -108,11 +241,51 @@ describe('ACT Test Vectors (Appendix A)', () => {
       expect(charge.slice(1).every(b => b === 0)).toBe(true);
     });
 
-    it.todo('validates spend proof CBOR (needs CBOR parser)');
+    it.todo('decodes spend proof from CBOR (vector truncated in JSON)');
+
+    it('decodes pre-refund state from CBOR', () => {
+      const data = hexToBytes(testVectors.spending.prerefund_cbor);
+      const state = decodePreRefund(data);
+
+      expect(state.kStar).toBeDefined();
+      expect(state.rStar).toBeDefined();
+      expect(state.m).toBe(70n); // 100 - 30 = 70
+      expect(state.ctx).toBeDefined();
+
+      console.log('Pre-refund state:');
+      console.log('  k* (new nullifier):', bytesToHex(state.kStar.toBytes()));
+      console.log('  m (remaining):', state.m);
+    });
+
+    it.todo('round-trips spend proof encoding (vector truncated in JSON)');
   });
 
   describe('A.5 Refund', () => {
-    it.todo('validates refund CBOR (needs CBOR parser)');
+    it('decodes refund from CBOR', () => {
+      const data = hexToBytes(testVectors.refund.refund_cbor);
+      const refund = decodeRefund(data);
+
+      expect(refund.AStar).toBeDefined();
+      expect(refund.eStar).toBeDefined();
+      expect(refund.gamma).toBeDefined();
+      expect(refund.z).toBeDefined();
+      expect(refund.t).toBe(10n);
+
+      console.log('Refund:');
+      console.log('  A*:', bytesToHex(refund.AStar.toBytes()));
+      console.log('  t (return):', refund.t);
+    });
+
+    it('round-trips refund encoding', () => {
+      const data = hexToBytes(testVectors.refund.refund_cbor);
+      const refund = decodeRefund(data);
+      const reencoded = encodeRefund(refund);
+      const decoded2 = decodeRefund(reencoded);
+
+      expect(decoded2.AStar.equals(refund.AStar)).toBe(true);
+      expect(decoded2.eStar.equals(refund.eStar)).toBe(true);
+      expect(decoded2.t).toBe(refund.t);
+    });
   });
 
   describe('A.6 Refund Token', () => {
@@ -129,11 +302,61 @@ describe('ACT Test Vectors (Appendix A)', () => {
       expect(credits.slice(1).every(b => b === 0)).toBe(true);
     });
 
-    it.todo('validates refund token CBOR (needs CBOR parser)');
-  });
-});
+    it('decodes refund token from CBOR', () => {
+      const data = hexToBytes(testVectors.refund_token.refund_token_cbor);
+      const token = decodeCreditToken(data);
 
-describe('Cross-implementation compatibility', () => {
-  it.todo('generates same H1-H4 as Rust reference implementation');
-  it.todo('generates same transcript hash as Rust reference implementation');
+      expect(token.A).toBeDefined();
+      expect(token.e).toBeDefined();
+      expect(token.k).toBeDefined();
+      expect(token.r).toBeDefined();
+      expect(token.c).toBe(80n); // 100 - 30 + 10 = 80
+      expect(token.ctx).toBeDefined();
+
+      // Verify nullifier matches expected
+      const expectedNullifier = testVectors.refund_token.refund_token_nullifier;
+      expect(bytesToHex(token.k.toBytes())).toBe(expectedNullifier);
+
+      console.log('Refund token:');
+      console.log('  A:', bytesToHex(token.A.toBytes()));
+      console.log('  k (nullifier):', bytesToHex(token.k.toBytes()));
+      console.log('  c:', token.c);
+    });
+  });
+
+  describe('Cross-implementation consistency', () => {
+    it.todo('nullifier in spend proof matches token nullifier (vector truncated)');
+
+    it('refund token has different nullifier than original', () => {
+      // Decode original credit token
+      const tokenData = hexToBytes(testVectors.issuance.credit_token_cbor);
+      const originalToken = decodeCreditToken(tokenData);
+
+      // Decode refund token
+      const refundTokenData = hexToBytes(testVectors.refund_token.refund_token_cbor);
+      const refundToken = decodeCreditToken(refundTokenData);
+
+      // Nullifiers should be different (unlinkability)
+      expect(refundToken.k.equals(originalToken.k)).toBe(false);
+    });
+
+    it('balance arithmetic is correct (without spend proof)', () => {
+      const { c, s, t } = testVectors.parameters;
+
+      // Original balance
+      const tokenData = hexToBytes(testVectors.issuance.credit_token_cbor);
+      const token = decodeCreditToken(tokenData);
+      expect(token.c).toBe(BigInt(c));
+
+      // Return amount
+      const refundData = hexToBytes(testVectors.refund.refund_cbor);
+      const refund = decodeRefund(refundData);
+      expect(refund.t).toBe(BigInt(t));
+
+      // Final balance
+      const refundTokenData = hexToBytes(testVectors.refund_token.refund_token_cbor);
+      const refundToken = decodeCreditToken(refundTokenData);
+      expect(refundToken.c).toBe(BigInt(c - s + t)); // 100 - 30 + 10 = 80
+    });
+  });
 });

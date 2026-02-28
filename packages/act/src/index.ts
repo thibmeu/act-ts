@@ -67,4 +67,28 @@ export {
 // Transcript (for advanced use)
 export { Transcript, SimpleTranscript, PROTOCOL_VERSION } from './transcript.js';
 
+// CBOR wire format (Section 4)
+export {
+  encodeIssuanceRequest,
+  decodeIssuanceRequest,
+  encodeIssuanceResponse,
+  decodeIssuanceResponse,
+  encodeCreditToken,
+  decodeCreditToken,
+  encodeSpendProof,
+  decodeSpendProof,
+  encodeRefund,
+  decodeRefund,
+  encodePreIssuance,
+  decodePreIssuance,
+  encodePreRefund,
+  decodePreRefund,
+  encodeKeyPair,
+  decodeKeyPair,
+  encodePublicKey,
+  decodePublicKey,
+  encodeError,
+  decodeError,
+} from './cbor.js';
+
 export const VERSION = '0.0.1';
