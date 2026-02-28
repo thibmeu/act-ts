@@ -7,6 +7,7 @@
 import type { Group, GroupElement, Scalar } from '../group.js';
 import type { LinearRelation } from '../linear-relation.js';
 import { SchnorrProof } from '../schnorr.js';
+import { asciiToBytes } from '../utils.js';
 import { Shake128Sponge, type DuplexSponge } from './sponge.js';
 import { ByteCodec, type Codec } from './codec.js';
 
@@ -103,9 +104,7 @@ export class NISigmaProtocol {
 
     // Compute protocol ID from relation structure
     // TODO: Include instance label (serialized statement) per spec
-    const protocolId = new TextEncoder().encode(
-      `NISigmaProtocol-${this.group.name}`
-    );
+    const protocolId = asciiToBytes(`NISigmaProtocol-${this.group.name}`);
     const sessionId = options.sessionId ?? new Uint8Array(0);
 
     const iv = computeIV(protocolId, sessionId);

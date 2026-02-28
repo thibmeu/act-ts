@@ -8,10 +8,10 @@ import type { GroupElement, Scalar } from './group.js';
 import type { LinearRelation } from './linear-relation.js';
 
 /** Commitment message (array of group elements) */
-export type Commitment = GroupElement[];
+export type Commitment = readonly GroupElement[];
 
 /** Response message (array of scalars) */
-export type Response = Scalar[];
+export type Response = readonly Scalar[];
 
 /**
  * Prover's internal state between commit and response phases.
@@ -34,6 +34,7 @@ const PROVER_STATE_TAG = Symbol('ProverState');
 /** Internal type with access to ProverState internals */
 interface ProverStateInternal extends ProverState {
   [PROVER_STATE_TAG]: true;
+  toJSON(): string;
 }
 
 /** Create an opaque ProverState */
@@ -103,7 +104,7 @@ export class SchnorrProof {
     const nonces = proverState._nonces;
 
     // response[i] = nonces[i] + witness[i] * challenge
-    const response: Response = [];
+    const response: Scalar[] = [];
     for (let i = 0; i < nonces.length; i++) {
       const n = nonces[i];
       const w = witness[i];
@@ -135,7 +136,7 @@ export class SchnorrProof {
     }
 
     // expected = linearMap(response)
-    const expected = this.relation.linearMap.map(response);
+    const expected = this.relation.linearMap.map(response as Scalar[]);
 
     // got[i] = commitment[i] + image[i] * challenge
     for (let i = 0; i < this.relation.numConstraints; i++) {
@@ -195,7 +196,7 @@ export class SchnorrProof {
       throw new Error('Invalid commitment length');
     }
 
-    const commitment: Commitment = [];
+    const commitment: GroupElement[] = [];
     for (let i = 0; i < this.relation.numConstraints; i++) {
       const slice = data.slice(i * elementSize, (i + 1) * elementSize);
       commitment.push(this.relation.group.elementFromBytes(slice));
@@ -212,7 +213,7 @@ export class SchnorrProof {
       throw new Error('Invalid response length');
     }
 
-    const response: Response = [];
+    const response: Scalar[] = [];
     for (let i = 0; i < this.relation.numScalars; i++) {
       const slice = data.slice(i * scalarSize, (i + 1) * scalarSize);
       response.push(this.relation.group.scalarFromBytes(slice));
@@ -235,7 +236,7 @@ export class SchnorrProof {
    * @returns Simulated response (random scalars)
    */
   simulateResponse(): Response {
-    const response: Response = [];
+    const response: Scalar[] = [];
     for (let i = 0; i < this.relation.numScalars; i++) {
       response.push(this.relation.group.randomScalar());
     }
@@ -267,10 +268,10 @@ export class SchnorrProof {
     }
 
     // linearMap(response)
-    const lhs = this.relation.linearMap.map(response);
+    const lhs = this.relation.linearMap.map(response as Scalar[]);
 
     // commitment[i] = lhs[i] - image[i] * challenge
-    const commitment: Commitment = [];
+    const commitment: GroupElement[] = [];
     for (let i = 0; i < this.relation.numConstraints; i++) {
       const lhsI = lhs[i];
       const imageI = this.relation.image[i];

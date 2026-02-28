@@ -19,7 +19,9 @@ const Point = noble_ristretto255.Point;
 const ORDER = BigInt('0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed');
 
 /** Default domain separation tag for hash-to-curve */
-const DEFAULT_DST = new TextEncoder().encode('sigma-proofs-ristretto255-v1');
+import { asciiToBytes } from '../utils.js';
+
+const DEFAULT_DST = asciiToBytes('sigma-proofs-ristretto255-v1');
 
 /**
  * Scalar wrapper for ristretto255.

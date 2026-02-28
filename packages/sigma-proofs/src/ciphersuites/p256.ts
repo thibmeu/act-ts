@@ -15,7 +15,9 @@ const Fn = Point.Fn;
 const ORDER = Fn.ORDER;
 
 /** Default domain separation tag for hash-to-curve */
-const DEFAULT_DST = new TextEncoder().encode('sigma-proofs-P256-v1');
+import { asciiToBytes } from '../utils.js';
+
+const DEFAULT_DST = asciiToBytes('sigma-proofs-P256-v1');
 
 type P256Point = InstanceType<typeof Point>;
 
