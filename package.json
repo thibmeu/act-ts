@@ -1,0 +1,29 @@
+{
+  "name": "act-ts-repo",
+  "description": "Anonymous Credit Tokens (ACT) implementation in TypeScript",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "format": "prettier --write . && eslint packages/**/*.ts --ignore-pattern **/dist/** --fix",
+    "lint": "prettier --check . && eslint packages/**/*.ts --ignore-pattern **/dist/**",
+    "test": "npm run test --workspaces --if-present -- --run"
+  },
+  "license": "Apache-2.0",
+  "version": "0.0.0",
+  "devDependencies": {
+    "@eslint/js": "9.28.0",
+    "eslint": "9.28.0",
+    "eslint-plugin-security": "3.0.1",
+    "prettier": "3.5.3",
+    "rimraf": "6.0.1",
+    "tsup": "8.5.0",
+    "typescript": "5.8.3",
+    "typescript-eslint": "8.34.0",
+    "vitest": "3.2.3"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "packageManager": "npm@11.3.0"
+}
