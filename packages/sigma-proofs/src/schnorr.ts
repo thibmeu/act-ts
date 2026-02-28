@@ -122,7 +122,7 @@ export class SchnorrProof {
     }
 
     // expected = linearMap(response)
-    const expected = this.relation.linearMap.map(response as Scalar[]);
+    const expected = this.relation.linearMap.map(response);
 
     // got[i] = commitment[i] + image[i] * challenge
     for (let i = 0; i < this.relation.numConstraints; i++) {
@@ -254,7 +254,7 @@ export class SchnorrProof {
     }
 
     // linearMap(response)
-    const lhs = this.relation.linearMap.map(response as Scalar[]);
+    const lhs = this.relation.linearMap.map(response);
 
     // commitment[i] = lhs[i] - image[i] * challenge
     const commitment: GroupElement[] = [];

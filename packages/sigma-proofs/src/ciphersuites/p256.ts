@@ -6,6 +6,7 @@
 
 import { p256, p256_hasher } from '@noble/curves/nist.js';
 import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/utils.js';
+import { pippenger } from '@noble/curves/abstract/curve.js';
 import type { Group, GroupElement, Scalar } from '../group.js';
 
 const Point = p256.Point;
@@ -162,24 +163,25 @@ export class P256Group implements Group {
       return this.identity();
     }
 
-    // Validate all inputs belong to this group before processing
+    // Validate all inputs belong to this group and extract internal representation
+    const points: P256Point[] = [];
+    const bigints: bigint[] = [];
     for (let i = 0; i < scalars.length; i++) {
-      if (!(scalars[i] instanceof P256Scalar)) {
+      const s = scalars[i];
+      const e = elements[i];
+      if (!(s instanceof P256Scalar)) {
         throw new TypeError(`Scalar at index ${i} is not a P256Scalar`);
       }
-      if (!(elements[i] instanceof P256Element)) {
+      if (!(e instanceof P256Element)) {
         throw new TypeError(`Element at index ${i} is not a P256Element`);
       }
+      points.push(e.point);
+      bigints.push(s.value);
     }
 
-    // Now safe to access internal representation
-    let acc = Point.ZERO;
-    for (let i = 0; i < scalars.length; i++) {
-      const s = scalars[i] as P256Scalar;
-      const e = elements[i] as P256Element;
-      acc = acc.add(e.point.multiply(s.value));
-    }
-    return new P256Element(acc);
+    // Use Pippenger's algorithm for efficient MSM
+    const result = pippenger(Point, points, bigints);
+    return new P256Element(result);
   }
 
   hashToElement(data: Uint8Array, dst?: Uint8Array): GroupElement {

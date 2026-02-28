@@ -10,6 +10,7 @@ import {
   ed25519,
 } from '@noble/curves/ed25519.js';
 import { bytesToNumberLE, numberToBytesLE } from '@noble/curves/utils.js';
+import { pippenger } from '@noble/curves/abstract/curve.js';
 import type { Group, GroupElement, Scalar } from '../group.js';
 
 const Fn = noble_ristretto255.Point.Fn;
@@ -163,24 +164,25 @@ export class Ristretto255Group implements Group {
       return this.identity();
     }
 
-    // Validate all inputs belong to this group before processing
+    // Validate all inputs belong to this group and extract internal representation
+    const points: RistrettoPoint[] = [];
+    const bigints: bigint[] = [];
     for (let i = 0; i < scalars.length; i++) {
-      if (!(scalars[i] instanceof Ristretto255Scalar)) {
+      const s = scalars[i];
+      const e = elements[i];
+      if (!(s instanceof Ristretto255Scalar)) {
         throw new TypeError(`Scalar at index ${i} is not a Ristretto255Scalar`);
       }
-      if (!(elements[i] instanceof Ristretto255Element)) {
+      if (!(e instanceof Ristretto255Element)) {
         throw new TypeError(`Element at index ${i} is not a Ristretto255Element`);
       }
+      points.push(e.point);
+      bigints.push(s.value);
     }
 
-    // Now safe to access internal representation
-    let acc = Point.ZERO;
-    for (let i = 0; i < scalars.length; i++) {
-      const s = scalars[i] as Ristretto255Scalar;
-      const e = elements[i] as Ristretto255Element;
-      acc = acc.add(e.point.multiply(s.value));
-    }
-    return new Ristretto255Element(acc);
+    // Use Pippenger's algorithm for efficient MSM
+    const result = pippenger(Point, points, bigints);
+    return new Ristretto255Element(result);
   }
 
   hashToElement(data: Uint8Array, dst?: Uint8Array): GroupElement {

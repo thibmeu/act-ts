@@ -17,6 +17,13 @@ import { ByteCodec, type Codec } from './codec.js';
 export interface NIOptions {
   /** Session identifier for domain separation */
   sessionId?: Uint8Array;
+  /**
+   * Protocol identifier for domain separation (64 bytes).
+   *
+   * Defaults to "ietf sigma proof linear relation" + 32 zero bytes.
+   * Override this for application-specific domain separation.
+   */
+  protocolId?: Uint8Array;
 }
 
 /**
@@ -132,10 +139,14 @@ export class NISigmaProtocol {
     this.group = relation.group;
     this.sigma = new SchnorrProof(relation);
 
+    const protocolId = options.protocolId ?? DEFAULT_PROTOCOL_ID;
+    if (protocolId.length !== 64) {
+      throw new Error(`protocolId must be 64 bytes, got ${protocolId.length}`);
+    }
     const sessionId = options.sessionId ?? new Uint8Array(0);
     const instanceLabel = relation.getInstanceLabel();
 
-    const sponge = initializeSponge(DEFAULT_PROTOCOL_ID, sessionId, instanceLabel);
+    const sponge = initializeSponge(protocolId, sessionId, instanceLabel);
     this.codec = new ByteCodec(this.group, sponge);
   }
 

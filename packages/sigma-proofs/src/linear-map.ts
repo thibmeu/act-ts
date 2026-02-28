@@ -45,7 +45,7 @@ export class LinearMap {
    * @param scalars - The witness vector (length must equal numScalars)
    * @returns Array of group elements (length equals numConstraints)
    */
-  map(scalars: Scalar[]): GroupElement[] {
+  map(scalars: readonly Scalar[]): GroupElement[] {
     if (scalars.length !== this.numScalars) {
       throw new Error(`Expected ${this.numScalars} scalars, got ${scalars.length}`);
     }
