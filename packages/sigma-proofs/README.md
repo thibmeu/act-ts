@@ -200,11 +200,31 @@ Based on [draft-irtf-cfrg-sigma-protocols-01](https://www.ietf.org/archive/id/dr
 - P-256 ciphersuite (§2.3.1)
 - Ristretto255 ciphersuite (for ACT)
 
+**Implemented:**
+- Simulator functions (`simulateResponse`, `simulateCommitment`, `simulate`)
+- Fiat-Shamir transformation (draft-irtf-cfrg-fiat-shamir-01)
+  - SHAKE128 duplex sponge
+  - ByteCodec for absorb/squeeze
+  - NISigmaProtocol for non-interactive proofs
+
 **Not yet implemented:**
-- Simulator functions (`simulate_response`, `simulate_commitment`)
 - OR-composition
-- BLS12-381 ciphersuite (test vectors use this)
-- Fiat-Shamir transformation
+- BLS12-381 ciphersuite (spec test vectors use this)
+- Statement serialization for instance labels
+- Native MSM optimization
+- Test vector generation (for cross-implementation validation)
+
+## Roadmap
+
+### Near-term
+- [ ] BLS12-381 ciphersuite (required for spec test vectors)
+- [ ] Statement/instance label serialization per Fiat-Shamir spec §4
+- [ ] Import VOPRF DLEQ test vectors from RFC 9497
+
+### Future
+- [ ] OR-composition for disjunctive proofs
+- [ ] Native MSM for performance
+- [ ] Test vector export (JSON format compatible with reference implementations)
 
 ## License
 
