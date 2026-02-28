@@ -6,7 +6,7 @@
 
 import type { Group, GroupElement, Scalar } from '../group.js';
 import type { LinearRelation } from '../linear-relation.js';
-import { SchnorrProof, type Proof, type ProverState } from '../schnorr.js';
+import { SchnorrProof } from '../schnorr.js';
 import { Shake128Sponge, type DuplexSponge } from './sponge.js';
 import { ByteCodec, type Codec } from './codec.js';
 
@@ -124,8 +124,9 @@ export class NISigmaProtocol {
    */
   prove(witness: readonly Scalar[]): NIProof {
     // Step 1: Generate commitment
-    const proverState = this.sigma.proverCommit(witness);
-    const commitment = proverState.getCommitment();
+    const [commitment, proverState] = this.sigma.proverCommit(
+      witness as Scalar[]
+    );
 
     // Step 2: Absorb commitment into hash state
     const codec = this.codec.clone();
@@ -174,8 +175,9 @@ export class NISigmaProtocol {
    */
   proveBatchable(witness: readonly Scalar[]): NIProofBatchable {
     // Step 1: Generate commitment
-    const proverState = this.sigma.proverCommit(witness);
-    const commitment = proverState.getCommitment();
+    const [commitment, proverState] = this.sigma.proverCommit(
+      witness as Scalar[]
+    );
 
     // Step 2: Absorb commitment and get challenge
     const codec = this.codec.clone();
@@ -222,7 +224,7 @@ export class NISigmaProtocol {
    */
   deserializeProof(bytes: Uint8Array): NIProof {
     const scalarSize = this.group.scalarSize;
-    const responseLen = this.relation.witnessSize;
+    const responseLen = this.relation.numScalars;
     const expectedLen = scalarSize * (1 + responseLen);
 
     if (bytes.length !== expectedLen) {
@@ -261,8 +263,8 @@ export class NISigmaProtocol {
   deserializeBatchableProof(bytes: Uint8Array): NIProofBatchable {
     const elementSize = this.group.elementSize;
     const scalarSize = this.group.scalarSize;
-    const commitLen = this.relation.imageSize;
-    const responseLen = this.relation.witnessSize;
+    const commitLen = this.relation.numConstraints;
+    const responseLen = this.relation.numScalars;
     const expectedLen = elementSize * commitLen + scalarSize * responseLen;
 
     if (bytes.length !== expectedLen) {
