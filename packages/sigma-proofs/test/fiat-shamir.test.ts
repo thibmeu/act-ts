@@ -5,11 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  Shake128Sponge,
-  ByteCodec,
-  NISigmaProtocol,
-} from '../src/fiat-shamir/index.js';
+import { Shake128Sponge, ByteCodec, NISigmaProtocol } from '../src/fiat-shamir/index.js';
 import { LinearRelation } from '../src/linear-relation.js';
 import { ristretto255 } from '../src/ciphersuites/ristretto255.js';
 import { p256 } from '../src/ciphersuites/p256.js';
@@ -131,21 +127,24 @@ describe('ByteCodec', () => {
 
 /** Helper to create a simple Schnorr relation: PoK{(x): X = x*G} */
 function createSchnorrRelation(
-  group: typeof ristretto255 | typeof p256,
+  group: ReturnType<typeof ristretto255>,
   x: ReturnType<typeof group.randomScalar>
 ) {
   const G = group.generator();
   const X = G.multiply(x);
 
   const relation = new LinearRelation(group);
-  const [varX] = relation.allocateScalars(1);
-  const [varG, varXPoint] = relation.allocateElements(2);
+  const scalars = relation.allocateScalars(1);
+  const elements = relation.allocateElements(2);
+  const varX = scalars[0]!;
+  const varG = elements[0]!;
+  const varXPoint = elements[1]!;
+
   relation.appendEquation(varXPoint, [[varX, varG]]);
   relation.setElements([
     [varG, G],
     [varXPoint, X],
   ]);
-  relation.setImage([[0, X]]);
 
   return relation;
 }
@@ -215,9 +214,7 @@ describe('NISigmaProtocol', () => {
 
       expect(deserialized.commitment.length).toBe(proof.commitment.length);
       for (let i = 0; i < proof.commitment.length; i++) {
-        expect(deserialized.commitment[i].equals(proof.commitment[i])).toBe(
-          true
-        );
+        expect(deserialized.commitment[i].equals(proof.commitment[i])).toBe(true);
       }
       expect(deserialized.response.length).toBe(proof.response.length);
       for (let i = 0; i < proof.response.length; i++) {
@@ -263,8 +260,14 @@ describe('NISigmaProtocol', () => {
       const Y = H.multiply(x);
 
       const relation = new LinearRelation(ristretto255);
-      const [varX] = relation.allocateScalars(1);
-      const [varG, varH, varXPoint, varYPoint] = relation.allocateElements(4);
+      const scalars = relation.allocateScalars(1);
+      const elements = relation.allocateElements(4);
+      const varX = scalars[0]!;
+      const varG = elements[0]!;
+      const varH = elements[1]!;
+      const varXPoint = elements[2]!;
+      const varYPoint = elements[3]!;
+
       relation.appendEquation(varXPoint, [[varX, varG]]);
       relation.appendEquation(varYPoint, [[varX, varH]]);
       relation.setElements([
@@ -272,10 +275,6 @@ describe('NISigmaProtocol', () => {
         [varH, H],
         [varXPoint, X],
         [varYPoint, Y],
-      ]);
-      relation.setImage([
-        [0, X],
-        [1, Y],
       ]);
 
       const ni = new NISigmaProtocol(relation);
@@ -314,9 +313,7 @@ describe('NISigmaProtocol', () => {
 
       const ni = new NISigmaProtocol(relation);
 
-      expect(() => ni.deserializeProof(new Uint8Array(10))).toThrow(
-        /Invalid proof length/
-      );
+      expect(() => ni.deserializeProof(new Uint8Array(10))).toThrow(/Invalid proof length/);
     });
 
     it('throws on invalid proof length (batchable)', () => {
@@ -371,9 +368,7 @@ describe('Instance Labels', () => {
     const relation2 = createSchnorrRelation(ristretto255, x2);
 
     // Different public keys should produce different labels
-    expect(relation1.getInstanceLabel()).not.toEqual(
-      relation2.getInstanceLabel()
-    );
+    expect(relation1.getInstanceLabel()).not.toEqual(relation2.getInstanceLabel());
   });
 
   it('label is order-independent for element allocation', () => {
@@ -387,9 +382,14 @@ describe('Instance Labels', () => {
 
     // Order A: allocate [G, H, X, Y] together
     const relationA = new LinearRelation(ristretto255);
-    const [varXa] = relationA.allocateScalars(1);
-    const [varGa, varHa, varXPointA, varYPointA] =
-      relationA.allocateElements(4);
+    const scalarsA = relationA.allocateScalars(1);
+    const elementsA = relationA.allocateElements(4);
+    const varXa = scalarsA[0]!;
+    const varGa = elementsA[0]!;
+    const varHa = elementsA[1]!;
+    const varXPointA = elementsA[2]!;
+    const varYPointA = elementsA[3]!;
+
     relationA.appendEquation(varXPointA, [[varXa, varGa]]);
     relationA.appendEquation(varYPointA, [[varXa, varHa]]);
     relationA.setElements([
@@ -398,16 +398,18 @@ describe('Instance Labels', () => {
       [varXPointA, X],
       [varYPointA, Y],
     ]);
-    relationA.setImage([
-      [0, X],
-      [1, Y],
-    ]);
 
     // Order B: allocate [G, X], then [H, Y] separately
     const relationB = new LinearRelation(ristretto255);
-    const [varXb] = relationB.allocateScalars(1);
-    const [varGb, varXPointB] = relationB.allocateElements(2);
-    const [varHb, varYPointB] = relationB.allocateElements(2);
+    const scalarsB = relationB.allocateScalars(1);
+    const elementsB1 = relationB.allocateElements(2);
+    const elementsB2 = relationB.allocateElements(2);
+    const varXb = scalarsB[0]!;
+    const varGb = elementsB1[0]!;
+    const varXPointB = elementsB1[1]!;
+    const varHb = elementsB2[0]!;
+    const varYPointB = elementsB2[1]!;
+
     relationB.appendEquation(varXPointB, [[varXb, varGb]]);
     relationB.appendEquation(varYPointB, [[varXb, varHb]]);
     relationB.setElements([
@@ -415,10 +417,6 @@ describe('Instance Labels', () => {
       [varXPointB, X],
       [varHb, H],
       [varYPointB, Y],
-    ]);
-    relationB.setImage([
-      [0, X],
-      [1, Y],
     ]);
 
     // Labels should be identical despite different allocation order
@@ -435,8 +433,14 @@ describe('Instance Labels', () => {
 
     // Different relation structure
     const relation2 = new LinearRelation(ristretto255);
-    const [varX2, varY2] = relation2.allocateScalars(2);
-    const [varG2, varH2, varXPoint2] = relation2.allocateElements(3);
+    const scalars2 = relation2.allocateScalars(2);
+    const elements2 = relation2.allocateElements(3);
+    const varX2 = scalars2[0]!;
+    const varY2 = scalars2[1]!;
+    const varG2 = elements2[0]!;
+    const varH2 = elements2[1]!;
+    const varXPoint2 = elements2[2]!;
+
     relation2.appendEquation(varXPoint2, [
       [varX2, varG2],
       [varY2, varH2],
@@ -447,7 +451,6 @@ describe('Instance Labels', () => {
       [varH2, H],
       [varXPoint2, X],
     ]);
-    relation2.setImage([[0, X]]);
 
     const ni1 = new NISigmaProtocol(relation1);
     const ni2 = new NISigmaProtocol(relation2);

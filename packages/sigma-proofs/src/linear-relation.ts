@@ -49,17 +49,30 @@ function concat(...arrays: Uint8Array[]): Uint8Array {
  * const [varG, varXPoint] = relation.allocateElements(2);
  * relation.appendEquation(varXPoint, [[varX, varG]]);
  * relation.setElements([[varG, G], [varXPoint, X]]);
+ * // Image is automatically populated from equation LHS elements
  * ```
  */
 export class LinearRelation {
   readonly linearMap: LinearMap;
-  /** Image elements (resolved from imageIndices) */
-  readonly image: GroupElement[] = [];
   /** Indices into groupElements for each equation's LHS */
   readonly imageIndices: number[] = [];
 
   constructor(group: Group) {
     this.linearMap = new LinearMap(group);
+  }
+
+  /**
+   * Image elements (LHS of equations), derived from groupElements via imageIndices.
+   * This getter ensures image is always in sync with setElements.
+   */
+  get image(): readonly GroupElement[] {
+    return this.imageIndices.map((idx) => {
+      const elem = this.linearMap.groupElements[idx];
+      if (elem === undefined) {
+        throw new Error(`Image index ${idx} references unset element`);
+      }
+      return elem;
+    });
   }
 
   /** The underlying group */
@@ -143,16 +156,15 @@ export class LinearRelation {
 
     this.linearMap.append(lc);
 
-    // Store the index for instance label computation
+    // Store the LHS index - image is derived from groupElements via this index
     this.imageIndices.push(lhs);
-
-    // The image will be set later via setElements for lhs
-    // For now, push identity as placeholder
-    this.image.push(this.linearMap.group.identity());
   }
 
   /**
    * Set concrete values for allocated group elements.
+   *
+   * This also sets the image values automatically - elements referenced as
+   * LHS in appendEquation() become the corresponding image values.
    *
    * @param elements - Array of [index, element] pairs
    */
@@ -164,20 +176,6 @@ export class LinearRelation {
         );
       }
       this.linearMap.groupElements[index] = element;
-    }
-  }
-
-  /**
-   * Set the image values (left-hand sides of equations).
-   *
-   * @param images - Array of [constraintIndex, element] pairs
-   */
-  setImage(images: Array<[number, GroupElement]>): void {
-    for (const [index, element] of images) {
-      if (index < 0 || index >= this.image.length) {
-        throw new Error(`Image index ${index} out of bounds (valid: 0-${this.image.length - 1})`);
-      }
-      this.image[index] = element;
     }
   }
 
@@ -228,8 +226,7 @@ export class LinearRelation {
     };
 
     // Process each equation, building canonical structure
-    const canonEqs: Array<{ imgIdx: number; terms: Array<[number, number]> }> =
-      [];
+    const canonEqs: Array<{ imgIdx: number; terms: Array<[number, number]> }> = [];
 
     for (let eqIdx = 0; eqIdx < lm.linearCombinations.length; eqIdx++) {
       const lc = lm.linearCombinations[eqIdx];

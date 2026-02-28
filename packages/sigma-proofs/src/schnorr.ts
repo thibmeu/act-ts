@@ -14,43 +14,30 @@ export type Commitment = readonly GroupElement[];
 export type Response = readonly Scalar[];
 
 /**
- * Prover's internal state between commit and response phases.
+ * Result of prover commitment phase.
  *
- * ⚠️ SECURITY: Contains secret material (witness, nonces).
- * - Do not persist, serialize, or log this object
- * - Discard reference immediately after calling proverResponse()
+ * Contains the commitment to send to verifier, and a one-shot `respond`
+ * function that computes the response given a challenge.
+ *
+ * ��️ SECURITY: The `respond` function captures secret material (witness, nonces).
+ * - Call `respond` exactly once, then discard this object
+ * - Do not persist, serialize, or log
  * - JavaScript cannot guarantee memory zeroization
  */
-export interface ProverState {
-  /** @internal Secret witness - do not access directly */
-  readonly _witness: readonly Scalar[];
-  /** @internal Random nonces - do not access directly */
-  readonly _nonces: readonly Scalar[];
-}
-
-/** Symbol to prevent accidental logging of ProverState */
-const PROVER_STATE_TAG = Symbol('ProverState');
-
-/** Internal type with access to ProverState internals */
-interface ProverStateInternal extends ProverState {
-  [PROVER_STATE_TAG]: true;
-  toJSON(): string;
-}
-
-/** Create an opaque ProverState */
-function createProverState(witness: Scalar[], nonces: Scalar[]): ProverState {
-  const state: ProverStateInternal = {
-    _witness: witness,
-    _nonces: nonces,
-    [PROVER_STATE_TAG]: true,
-    // Prevent accidental JSON serialization
-    toJSON() {
-      return '[ProverState - contains secrets]';
-    },
-  };
-  // Override toString to prevent logging
-  Object.defineProperty(state, Symbol.toStringTag, { value: 'ProverState' });
-  return state;
+export interface ProverCommitment {
+  /** The commitment to send to the verifier */
+  readonly commitment: Commitment;
+  /**
+   * Compute the response for the given challenge.
+   *
+   * ⚠️ This function can only be called ONCE. Subsequent calls throw an error
+   * to prevent nonce reuse, which would leak the witness.
+   *
+   * @param challenge - Challenge scalar from verifier
+   * @returns Response (array of scalars)
+   * @throws If called more than once
+   */
+  respond(challenge: Scalar): Response;
 }
 
 /**
@@ -66,12 +53,13 @@ export class SchnorrProof {
   /**
    * Prover commitment phase.
    *
-   * Generates the first message (commitment) and internal state.
+   * Generates the commitment and returns a one-shot respond function.
+   * The respond function can only be called once to prevent nonce reuse.
    *
    * @param witness - The secret witness (array of scalars)
-   * @returns Tuple of [commitment, proverState]
+   * @returns ProverCommitment with commitment and respond function
    */
-  proverCommit(witness: Scalar[]): [Commitment, ProverState] {
+  proverCommit(witness: Scalar[]): ProverCommitment {
     if (witness.length !== this.relation.numScalars) {
       throw new Error(
         `Witness length ${witness.length} does not match expected ${this.relation.numScalars}`
@@ -87,34 +75,32 @@ export class SchnorrProof {
     // Compute commitment: linearMap(nonces)
     const commitment = this.relation.linearMap.map(nonces);
 
-    return [commitment, createProverState(witness, nonces)];
-  }
+    // Track if respond has been called
+    let consumed = false;
 
-  /**
-   * Prover response phase.
-   *
-   * Computes the response given the challenge.
-   *
-   * @param proverState - Internal state from commit phase
-   * @param challenge - Challenge scalar from verifier
-   * @returns Response (array of scalars)
-   */
-  proverResponse(proverState: ProverState, challenge: Scalar): Response {
-    const witness = proverState._witness;
-    const nonces = proverState._nonces;
+    return {
+      commitment,
+      respond: (challenge: Scalar): Response => {
+        if (consumed) {
+          throw new Error(
+            'ProverCommitment.respond() already called - cannot reuse (nonce reuse leaks witness)'
+          );
+        }
+        consumed = true;
 
-    // response[i] = nonces[i] + witness[i] * challenge
-    const response: Scalar[] = [];
-    for (let i = 0; i < nonces.length; i++) {
-      const n = nonces[i];
-      const w = witness[i];
-      if (n === undefined || w === undefined) {
-        throw new Error('Invalid prover state');
-      }
-      response.push(n.add(w.mul(challenge)));
-    }
-
-    return response;
+        // response[i] = nonces[i] + witness[i] * challenge
+        const response: Scalar[] = [];
+        for (let i = 0; i < nonces.length; i++) {
+          const n = nonces[i];
+          const w = witness[i];
+          if (n === undefined || w === undefined) {
+            throw new Error('Invalid prover state');
+          }
+          response.push(n.add(w.mul(challenge)));
+        }
+        return response;
+      },
+    };
   }
 
   /**

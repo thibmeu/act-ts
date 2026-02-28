@@ -196,12 +196,23 @@ function testGroup(group: Group, name: string) {
         expect(() => relation.setElements([[-1, group.generator()]])).toThrow('out of bounds');
       });
 
-      it('rejects negative index in setImage', () => {
+      it('image is derived from setElements via imageIndices', () => {
         const relation = new LinearRelation(group);
         relation.allocateScalars(1);
-        relation.allocateElements(2);
-        relation.appendEquation(1, [[0, 0]]);
-        expect(() => relation.setImage([[-1, group.generator()]])).toThrow('out of bounds');
+        const elements = relation.allocateElements(2);
+        const varG = elements[0]!;
+        const varX = elements[1]!;
+        relation.appendEquation(varX, [[0, varG]]);
+
+        const G = group.generator();
+        const X = G.multiply(group.randomScalar());
+        relation.setElements([
+          [varG, G],
+          [varX, X],
+        ]);
+
+        // Image should be derived from element at index varX
+        expect(relation.image[0]!.equals(X)).toBe(true);
       });
     });
   });

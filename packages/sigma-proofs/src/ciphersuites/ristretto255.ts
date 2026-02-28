@@ -14,9 +14,7 @@ import type { Group, GroupElement, Scalar } from '../group.js';
 
 const Fn = noble_ristretto255.Point.Fn;
 const Point = noble_ristretto255.Point;
-
-// Group order (same as ed25519 scalar field order)
-const ORDER = BigInt('0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed');
+const ORDER = Fn.ORDER;
 
 /** Default domain separation tag for hash-to-curve */
 import { asciiToBytes } from '../utils.js';
@@ -165,13 +163,24 @@ export class Ristretto255Group implements Group {
       return this.identity();
     }
 
-    let result = this.identity() as Ristretto255Element;
+    // Validate all inputs belong to this group before processing
+    for (let i = 0; i < scalars.length; i++) {
+      if (!(scalars[i] instanceof Ristretto255Scalar)) {
+        throw new TypeError(`Scalar at index ${i} is not a Ristretto255Scalar`);
+      }
+      if (!(elements[i] instanceof Ristretto255Element)) {
+        throw new TypeError(`Element at index ${i} is not a Ristretto255Element`);
+      }
+    }
+
+    // Now safe to access internal representation
+    let acc = Point.ZERO;
     for (let i = 0; i < scalars.length; i++) {
       const s = scalars[i] as Ristretto255Scalar;
       const e = elements[i] as Ristretto255Element;
-      result = new Ristretto255Element(result.point.add(e.point.multiply(s.value)));
+      acc = acc.add(e.point.multiply(s.value));
     }
-    return result;
+    return new Ristretto255Element(acc);
   }
 
   hashToElement(data: Uint8Array, dst?: Uint8Array): GroupElement {

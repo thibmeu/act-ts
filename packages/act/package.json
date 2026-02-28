@@ -1,5 +1,5 @@
 {
-  "name": "@aspect/act",
+  "name": "act",
   "version": "0.0.1",
   "description": "Anonymous Credit Tokens (draft-schlesinger-cfrg-act)",
   "type": "module",
@@ -18,7 +18,7 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
-    "@aspect/sigma-proofs": "*",
+    "sigma-proofs": "*",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^1.7.2"
   },

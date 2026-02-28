@@ -1,5 +1,5 @@
 {
-  "name": "@aspect/privacypass-act",
+  "name": "privacypass-act",
   "version": "0.0.1",
   "description": "Privacy Pass integration for ACT (draft-schlesinger-privacypass-act)",
   "type": "module",
@@ -18,7 +18,7 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
-    "@aspect/act": "*"
+    "act": "*"
   },
   "devDependencies": {
     "vitest": "^3.2.3"

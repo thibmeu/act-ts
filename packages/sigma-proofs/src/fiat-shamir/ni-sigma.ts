@@ -135,11 +135,7 @@ export class NISigmaProtocol {
     const sessionId = options.sessionId ?? new Uint8Array(0);
     const instanceLabel = relation.getInstanceLabel();
 
-    const sponge = initializeSponge(
-      DEFAULT_PROTOCOL_ID,
-      sessionId,
-      instanceLabel
-    );
+    const sponge = initializeSponge(DEFAULT_PROTOCOL_ID, sessionId, instanceLabel);
     this.codec = new ByteCodec(this.group, sponge);
   }
 
@@ -154,19 +150,17 @@ export class NISigmaProtocol {
    */
   prove(witness: readonly Scalar[]): NIProof {
     // Step 1: Generate commitment
-    const [commitment, proverState] = this.sigma.proverCommit(
-      witness as Scalar[]
-    );
+    const prover = this.sigma.proverCommit(witness as Scalar[]);
 
     // Step 2: Absorb commitment into hash state
     const codec = this.codec.clone();
-    codec.absorbElements(commitment);
+    codec.absorbElements(prover.commitment);
 
     // Step 3: Squeeze challenge
     const challenge = codec.squeezeChallenge();
 
     // Step 4: Compute response
-    const response = this.sigma.proverResponse(proverState, challenge);
+    const response = prover.respond(challenge);
 
     return { challenge, response };
   }
@@ -179,10 +173,7 @@ export class NISigmaProtocol {
    */
   verify(proof: NIProof): boolean {
     // Step 1: Recompute commitment from challenge and response
-    const commitment = this.sigma.simulateCommitment(
-      proof.response,
-      proof.challenge
-    );
+    const commitment = this.sigma.simulateCommitment(proof.response, proof.challenge);
 
     // Step 2: Absorb commitment into hash state
     const codec = this.codec.clone();
@@ -205,19 +196,17 @@ export class NISigmaProtocol {
    */
   proveBatchable(witness: readonly Scalar[]): NIProofBatchable {
     // Step 1: Generate commitment
-    const [commitment, proverState] = this.sigma.proverCommit(
-      witness as Scalar[]
-    );
+    const prover = this.sigma.proverCommit(witness as Scalar[]);
 
     // Step 2: Absorb commitment and get challenge
     const codec = this.codec.clone();
-    codec.absorbElements(commitment);
+    codec.absorbElements(prover.commitment);
     const challenge = codec.squeezeChallenge();
 
     // Step 3: Compute response
-    const response = this.sigma.proverResponse(proverState, challenge);
+    const response = prover.respond(challenge);
 
-    return { commitment, response };
+    return { commitment: prover.commitment, response };
   }
 
   /**
@@ -258,9 +247,7 @@ export class NISigmaProtocol {
     const expectedLen = scalarSize * (1 + responseLen);
 
     if (bytes.length !== expectedLen) {
-      throw new Error(
-        `Invalid proof length: expected ${expectedLen}, got ${bytes.length}`
-      );
+      throw new Error(`Invalid proof length: expected ${expectedLen}, got ${bytes.length}`);
     }
 
     const challenge = this.group.scalarFromBytes(bytes.subarray(0, scalarSize));
@@ -298,9 +285,7 @@ export class NISigmaProtocol {
     const expectedLen = elementSize * commitLen + scalarSize * responseLen;
 
     if (bytes.length !== expectedLen) {
-      throw new Error(
-        `Invalid proof length: expected ${expectedLen}, got ${bytes.length}`
-      );
+      throw new Error(`Invalid proof length: expected ${expectedLen}, got ${bytes.length}`);
     }
 
     const commitment: GroupElement[] = [];

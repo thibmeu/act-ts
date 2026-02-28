@@ -162,13 +162,24 @@ export class P256Group implements Group {
       return this.identity();
     }
 
-    let result = this.identity() as P256Element;
+    // Validate all inputs belong to this group before processing
+    for (let i = 0; i < scalars.length; i++) {
+      if (!(scalars[i] instanceof P256Scalar)) {
+        throw new TypeError(`Scalar at index ${i} is not a P256Scalar`);
+      }
+      if (!(elements[i] instanceof P256Element)) {
+        throw new TypeError(`Element at index ${i} is not a P256Element`);
+      }
+    }
+
+    // Now safe to access internal representation
+    let acc = Point.ZERO;
     for (let i = 0; i < scalars.length; i++) {
       const s = scalars[i] as P256Scalar;
       const e = elements[i] as P256Element;
-      result = new P256Element(result.point.add(e.point.multiply(s.value)));
+      acc = acc.add(e.point.multiply(s.value));
     }
-    return result;
+    return new P256Element(acc);
   }
 
   hashToElement(data: Uint8Array, dst?: Uint8Array): GroupElement {

@@ -1,5 +1,5 @@
 {
-  "name": "@aspect/sigma-proofs",
+  "name": "sigma-proofs",
   "version": "0.0.1",
   "description": "Interactive Sigma Proofs (draft-irtf-cfrg-sigma-protocols)",
   "type": "module",
