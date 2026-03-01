@@ -9,11 +9,11 @@ Technical design of act-ts packages.
 ```
 packages/
   sigma-proofs/       # draft-irtf-cfrg-sigma-protocols-01
-  act/                # draft-schlesinger-cfrg-act-01
+  act-ts/             # draft-schlesinger-cfrg-act-01
   privacypass-act/    # draft-schlesinger-privacypass-act-01
 ```
 
-Dependency graph: `privacypass-act` → `act` → `sigma-proofs`
+Dependency graph: `privacypass-act` → `act-ts` → `sigma-proofs`
 
 ---
 

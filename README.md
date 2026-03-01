@@ -25,7 +25,7 @@ TypeScript implementation of Anonymous Credit Tokens (ACT) for privacy-preservin
 | Package | Description | Spec |
 |---------|-------------|------|
 | [sigma-proofs](./packages/sigma-proofs) | Sigma protocols for zero-knowledge proofs | [draft-irtf-cfrg-sigma-protocols-01](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/) |
-| [act](./packages/act) | Anonymous Credit Tokens core protocol | [draft-schlesinger-cfrg-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/) |
+| [act-ts](./packages/act-ts) | Anonymous Credit Tokens core protocol | [draft-schlesinger-cfrg-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/) |
 | [privacypass-act](./packages/privacypass-act) | Privacy Pass integration for ACT | [draft-schlesinger-privacypass-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-privacypass-act/) |
 
 ## What is ACT?
@@ -48,7 +48,7 @@ Anonymous Credit Tokens enable privacy-preserving credit systems where:
 ```bash
 # Install individual packages
 npm install sigma-proofs
-npm install act
+npm install act-ts
 npm install privacypass-act
 ```
 
@@ -66,7 +66,7 @@ import {
   verifyAndRefund, 
   constructRefundToken,
   SeededPRNG
-} from 'act';
+} from 'act-ts';
 
 // Setup (vnext API)
 const group = ristretto255();
@@ -104,7 +104,7 @@ const newToken = constructRefundToken(params, pk, proof, refund, spendState);
 ```
 packages/
   sigma-proofs/     # Zero-knowledge proof primitives
-  act/              # Core ACT protocol
+  act-ts/           # Core ACT protocol
   privacypass-act/  # Privacy Pass integration
 docs/
   ARCHITECTURE.md   # Technical design
@@ -116,18 +116,18 @@ docs/
 | Package | Status | Tests |
 |---------|--------|-------|
 | sigma-proofs | Complete | 112 passing |
-| act | vnext (sigma-draft-compliance) | 124 passing |
+| act-ts | vnext (sigma-draft-compliance) | 124 passing |
 | privacypass-act | Not started | - |
 
 ### Roadmap
 
 - [x] sigma-proofs: LinearRelation, SchnorrProof, NISigmaProtocol
 - [x] sigma-proofs: SHAKE128 Fiat-Shamir (draft-irtf-cfrg-fiat-shamir-01)
-- [x] act: Issuance, spending, range proofs (current draft)
-- [x] act: vnext with algebraic range proofs (replacing CDS OR-proofs)
-- [x] act: TLS wire format encoding (replacing CBOR)
-- [x] act: Horner optimization for pow2-weighted sums
-- [ ] act: Interop testing with Rust reference implementation
+- [x] act-ts: Issuance, spending, range proofs (current draft)
+- [x] act-ts: vnext with algebraic range proofs (replacing CDS OR-proofs)
+- [x] act-ts: TLS wire format encoding (replacing CBOR)
+- [x] act-ts: Horner optimization for pow2-weighted sums
+- [ ] act-ts: Interop testing with Rust reference implementation
 - [ ] privacypass-act: Token challenge/response integration
 
 ## Security Considerations

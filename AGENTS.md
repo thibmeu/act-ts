@@ -24,7 +24,7 @@ packages/
   sigma-proofs/       # Sigma protocols (112 tests) - COMPLETE
     src/fiat-shamir/  # SHAKE128 sponge, NISigmaProtocol
     src/ciphersuites/ # ristretto255, P-256
-  act/                # ACT core (124 tests) - vnext active
+  act-ts/             # ACT core (124 tests) - vnext active
     src/*-vnext.ts    # New API (use these)
     src/*.ts          # Old API (deprecated)
   privacypass-act/    # NOT STARTED
@@ -41,7 +41,7 @@ docs/
 | Package | Spec | Notes |
 |---------|------|-------|
 | sigma-proofs | [draft-irtf-cfrg-sigma-protocols-01](https://www.ietf.org/archive/id/draft-irtf-cfrg-sigma-protocols-01.txt) | Complete |
-| act | [draft-schlesinger-cfrg-act-01](https://www.ietf.org/archive/id/draft-schlesinger-cfrg-act-01.txt) | vnext uses algebraic range proofs |
+| act-ts | [draft-schlesinger-cfrg-act-01](https://www.ietf.org/archive/id/draft-schlesinger-cfrg-act-01.txt) | vnext uses algebraic range proofs |
 | privacypass-act | [draft-schlesinger-privacypass-act-01](https://datatracker.ietf.org/doc/html/draft-schlesinger-privacypass-act-01) | Blocked |
 
 ---
@@ -53,11 +53,11 @@ docs/
 | Group operations | `sigma-proofs/src/ciphersuites/ristretto255.ts` |
 | Schnorr proofs | `sigma-proofs/src/schnorr.ts` |
 | Fiat-Shamir | `sigma-proofs/src/fiat-shamir/sponge.ts`, `ni-sigma.ts` |
-| ACT issuance | `act/src/issuance-vnext.ts` |
-| ACT spending | `act/src/spend-vnext.ts` |
-| Range proofs | `act/src/spend-vnext.ts:buildSpendRelation()` |
-| TLS encoding | `act/src/encoding-vnext.ts` |
-| System params | `act/src/params-vnext.ts` |
+| ACT issuance | `act-ts/src/issuance-vnext.ts` |
+| ACT spending | `act-ts/src/spend-vnext.ts` |
+| Range proofs | `act-ts/src/spend-vnext.ts:buildSpendRelation()` |
+| TLS encoding | `act-ts/src/encoding-vnext.ts` |
+| System params | `act-ts/src/params-vnext.ts` |
 
 ---
 
@@ -108,7 +108,7 @@ docs/
 | Package | Status | Tests |
 |---------|--------|-------|
 | sigma-proofs | Complete | 112 |
-| act | vnext active | 124 |
+| act-ts | vnext active | 124 |
 | privacypass-act | Not started | 1 (placeholder) |
 
 ### What's Done (vnext)
@@ -123,7 +123,7 @@ docs/
 - `Buffer.from()` usage in spend.ts needs fix
 
 ### Blocked
-- privacypass-act: Needs act vnext completion
+- privacypass-act: Needs act-ts vnext completion
 - Interop testing: Needs Rust reference alignment
 
 ---
