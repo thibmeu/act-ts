@@ -52,7 +52,10 @@ const proof = new SchnorrProof(relation);
 // Step 1: Prover commits
 console.log('Step 1: Prover commits...');
 const prover = proof.proverCommit([x]);
-console.log('Commitment:', prover.commitment.map((e) => toHex(e.toBytes()).slice(0, 16) + '...'));
+console.log(
+  'Commitment:',
+  prover.commitment.map((e) => toHex(e.toBytes()).slice(0, 16) + '...')
+);
 
 // Step 2: Verifier sends random challenge
 console.log('\nStep 2: Verifier sends challenge...');
@@ -62,7 +65,10 @@ console.log('Challenge:', toHex(challenge.toBytes()).slice(0, 16) + '...');
 // Step 3: Prover responds (one-shot - consumes the state)
 console.log('\nStep 3: Prover responds...');
 const response = prover.respond(challenge);
-console.log('Response:', response.map((s) => toHex(s.toBytes()).slice(0, 16) + '...'));
+console.log(
+  'Response:',
+  response.map((s) => toHex(s.toBytes()).slice(0, 16) + '...')
+);
 
 // Step 4: Verifier checks
 console.log('\nStep 4: Verifier checks...');
