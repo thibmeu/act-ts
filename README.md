@@ -55,20 +55,36 @@ npm install privacypass-act
 ## Quick Example
 
 ```typescript
-import { generateParams, generateKeyPair, issueRequest, issueResponse, verifyIssuance, proveSpend, verifyAndRefund, constructRefundToken } from 'act';
+import { 
+  ristretto255,
+  generateParameters, 
+  keyGen, 
+  issueRequest, 
+  issueResponse, 
+  verifyIssuance, 
+  proveSpend, 
+  verifyAndRefund, 
+  constructRefundToken,
+  SeededPRNG
+} from 'act';
 
-// Setup
-const params = generateParams('ACT-v1:example:api:prod:2024-01-15', 8);
-const { sk, pk } = generateKeyPair(params);
+// Setup (vnext API)
+const group = ristretto255();
+const rng = new SeededPRNG(crypto.getRandomValues(new Uint8Array(32)));
+const domainSeparator = new TextEncoder().encode('ACT-v1:example:api:prod');
+const params = generateParameters(group, domainSeparator, 64); // L=64 bits
+const { privateKey: sk, publicKey: pk } = keyGen(group, rng);
 
 // Issuance: Client requests 100 credits
-const [request, clientState] = issueRequest(params);
-const response = issueResponse(params, sk, request, 100n, ctx);
-const token = verifyIssuance(params, pk, request, response, clientState);
+const ctx = group.hashToScalar(new Uint8Array([1, 2, 3])); // context binding
+const [request, clientState] = issueRequest(params, ctx, rng);
+const response = issueResponse(params, sk, request, 100n, ctx, rng);
+const token = verifyIssuance(params, pk, response, clientState);
 
 // Spending: Client spends 30 credits
-const [proof, spendState] = proveSpend(params, token, 30n);
-const refund = verifyAndRefund(params, sk, proof, nullifierDb, 0n);
+const [proof, spendState] = proveSpend(params, token, 30n, rng);
+const nullifierDb = new Set<string>();
+const refund = verifyAndRefund(params, sk, proof, nullifierDb, 0n, rng);
 const newToken = constructRefundToken(params, pk, proof, refund, spendState);
 // newToken has 70 credits remaining
 ```
@@ -99,15 +115,19 @@ docs/
 
 | Package | Status | Tests |
 |---------|--------|-------|
-| sigma-proofs | Complete | 109 passing |
-| act | Current draft implemented | 49 passing |
+| sigma-proofs | Complete | 112 passing |
+| act | vnext (sigma-draft-compliance) | 124 passing |
 | privacypass-act | Not started | - |
 
 ### Roadmap
 
 - [x] sigma-proofs: LinearRelation, SchnorrProof, NISigmaProtocol
+- [x] sigma-proofs: SHAKE128 Fiat-Shamir (draft-irtf-cfrg-fiat-shamir-01)
 - [x] act: Issuance, spending, range proofs (current draft)
-- [ ] act: Migration to sigma-draft-compliance (pending test vectors)
+- [x] act: vnext with algebraic range proofs (replacing CDS OR-proofs)
+- [x] act: TLS wire format encoding (replacing CBOR)
+- [x] act: Horner optimization for pow2-weighted sums
+- [ ] act: Interop testing with Rust reference implementation
 - [ ] privacypass-act: Token challenge/response integration
 
 ## Security Considerations
