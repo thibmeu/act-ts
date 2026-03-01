@@ -279,10 +279,44 @@ function buildSpendRelation(
     }
   }
 
-  // Equation for commitment total consistency
-  // ComTotal = c*H1 + kStar*H2 + rStar*H3
-  // where rStar = sum(sCom[j]*2^j)
-  // This is implicitly verified through the range proof structure
+  // Equation for commitment total consistency (final equation: 2L+3)
+  // ComTotal = c*H1 + kStar*H2 + Σ sCom[j]*(H3*2^j)
+  //
+  // This equation ties together:
+  // - c (the token's credit balance, proven in eq 2)
+  // - kStar (the new nullifier randomness, bound in Com[0])
+  // - sCom[j] (the randomizers, bound in each Com[j])
+  //
+  // Since ComTotal = s*H1 + KPrime where KPrime = sum(2^j*Com[j]),
+  // and each Com[j] = b[j]*H1 + ... (opening) with b[j] being bits of (c-s),
+  // this verifies the consistency between s and c via the range proof.
+
+  // Allocate additional elements for consistency equation
+  // We need separate H1, H2 vars and H3*2^j coefficients
+  const consistencyH1Idx = relation.allocateElements(1)[0]!;
+  const consistencyH2Idx = relation.allocateElements(1)[0]!;
+
+  relation.setElements([
+    [consistencyH1Idx, H1],
+    [consistencyH2Idx, H2],
+  ]);
+
+  // Build the consistency equation: ComTotal = c*H1 + kStar*H2 + Σ sCom[j]*(H3*2^j)
+  const coefficients: Array<[number, number]> = [
+    [cVar, consistencyH1Idx],
+    [kStarVar, consistencyH2Idx],
+  ];
+
+  // Add the sCom[j]*(H3*2^j) terms
+  for (let j = 0; j < L; j++) {
+    const pow2j = 1n << BigInt(j);
+    const h3Times2j = H3.multiply(group.scalarFromBigint(pow2j));
+    const h3CoeffIdx = relation.allocateElements(1)[0]!;
+    relation.setElements([[h3CoeffIdx, h3Times2j]]);
+    coefficients.push([sComVars[j]!, h3CoeffIdx]);
+  }
+
+  relation.appendEquation(comTotalIdx, coefficients);
 
   return {
     relation,

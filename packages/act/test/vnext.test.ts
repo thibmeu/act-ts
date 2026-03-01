@@ -420,4 +420,343 @@ describe('ACT VNEXT', () => {
       verifySpendProof(params, issuerKeys.privateKey, spendProof);
     });
   });
+
+  describe('Security tests', () => {
+    it('handles large amount issuance (2^126)', { timeout: 30000 }, () => {
+      // Use L=128 to accommodate large values
+      const paramsL128 = generateParameters(group, 'ACT-v1:test:security:large:2026', 128);
+      const rng = makeRng(0x40);
+      const keysL128 = keyGen(group, rng);
+      const ctx = group.scalarFromBigint(0n);
+
+      // Issue 2^126 credits
+      const largeAmount = 1n << 126n;
+      const [request, issueState] = issueRequest(paramsL128, ctx, rng);
+      const response = issueResponse(
+        paramsL128,
+        keysL128.privateKey,
+        request,
+        largeAmount,
+        ctx,
+        rng
+      );
+      const token = verifyIssuance(paramsL128, keysL128.publicKey, response, issueState);
+      expect(token.c).toBe(largeAmount);
+
+      // Spend half
+      const spendAmount = largeAmount / 2n;
+      const [spendProof, spendState] = proveSpend(paramsL128, token, spendAmount, rng);
+      verifySpendProof(paramsL128, keysL128.privateKey, spendProof);
+
+      // Refund
+      const refund = issueRefund(paramsL128, keysL128.privateKey, spendProof, 0n, rng);
+      const newToken = constructRefundToken(
+        paramsL128,
+        keysL128.publicKey,
+        spendProof,
+        refund,
+        spendState
+      );
+      expect(newToken.c).toBe(largeAmount - spendAmount);
+    });
+
+    it('exhaustively spends 1 credit at a time', { timeout: 30000 }, () => {
+      const rng = makeRng(0x41);
+      const ctx = group.scalarFromBigint(0n);
+      const initialCredits = 10n;
+
+      // Issue token with 10 credits
+      const [request, issueState] = issueRequest(params, ctx, rng);
+      const response = issueResponse(
+        params,
+        issuerKeys.privateKey,
+        request,
+        initialCredits,
+        ctx,
+        rng
+      );
+      let token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
+      const nullifiers: string[] = [];
+
+      // Spend 1 credit at a time
+      for (let i = 0n; i < initialCredits; i++) {
+        const [spendProof, spendState] = proveSpend(params, token, 1n, rng);
+        verifySpendProof(params, issuerKeys.privateKey, spendProof);
+
+        // Track nullifier (as hex string for easy comparison)
+        const nullifierHex = Buffer.from(spendProof.k.toBytes()).toString('hex');
+        expect(nullifiers).not.toContain(nullifierHex);
+        nullifiers.push(nullifierHex);
+
+        // Get refund token for next iteration
+        const refund = issueRefund(params, issuerKeys.privateKey, spendProof, 0n, rng);
+        token = constructRefundToken(
+          params,
+          issuerKeys.publicKey,
+          spendProof,
+          refund,
+          spendState
+        );
+        expect(token.c).toBe(initialCredits - i - 1n);
+      }
+
+      // Token should be exhausted
+      expect(token.c).toBe(0n);
+    });
+
+    it('nullifier collision check (15 tokens)', { timeout: 30000 }, () => {
+      // Use L=4 for speed, smaller token count
+      const paramsL4 = generateParameters(group, 'ACT-v1:test:collision:local:2026', 4);
+      const rng = makeRng(0x42);
+      const keysL4 = keyGen(group, rng);
+      const ctx = group.scalarFromBigint(0n);
+      const nullifiers = new Set<string>();
+
+      // Create 15 tokens and collect nullifiers (faster with L=4)
+      for (let i = 0; i < 15; i++) {
+        const [request, issueState] = issueRequest(paramsL4, ctx, rng);
+        const response = issueResponse(
+          paramsL4,
+          keysL4.privateKey,
+          request,
+          10n,
+          ctx,
+          rng
+        );
+        const token = verifyIssuance(paramsL4, keysL4.publicKey, response, issueState);
+
+        // Spend and get nullifier
+        const [spendProof, _] = proveSpend(paramsL4, token, 5n, rng);
+        const nullifierHex = Buffer.from(spendProof.k.toBytes()).toString('hex');
+
+        // Check for collision
+        expect(nullifiers.has(nullifierHex)).toBe(false);
+        nullifiers.add(nullifierHex);
+      }
+
+      // All 15 nullifiers should be unique
+      expect(nullifiers.size).toBe(15);
+    });
+
+    it('rejects tampered refund (modified e value)', () => {
+      const rng = makeRng(0x43);
+      const ctx = group.scalarFromBigint(0n);
+
+      // Issue and spend
+      const [request, issueState] = issueRequest(params, ctx, rng);
+      const response = issueResponse(
+        params,
+        issuerKeys.privateKey,
+        request,
+        100n,
+        ctx,
+        rng
+      );
+      const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
+      const [spendProof, spendState] = proveSpend(params, token, 30n, rng);
+      const refund = issueRefund(params, issuerKeys.privateKey, spendProof, 0n, rng);
+
+      // Tamper with the refund e value
+      const tamperedE = refund.eStar.add(group.scalarFromBigint(1n));
+      const tamperedRefund = { ...refund, eStar: tamperedE };
+
+      // Should fail to construct token
+      expect(() =>
+        constructRefundToken(params, issuerKeys.publicKey, spendProof, tamperedRefund, spendState)
+      ).toThrow(ACTError);
+    });
+
+    it('rejects tampered refund (modified A point)', () => {
+      const rng = makeRng(0x44);
+      const ctx = group.scalarFromBigint(0n);
+
+      // Issue and spend
+      const [request, issueState] = issueRequest(params, ctx, rng);
+      const response = issueResponse(
+        params,
+        issuerKeys.privateKey,
+        request,
+        100n,
+        ctx,
+        rng
+      );
+      const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
+      const [spendProof, spendState] = proveSpend(params, token, 30n, rng);
+      const refund = issueRefund(params, issuerKeys.privateKey, spendProof, 0n, rng);
+
+      // Tamper with the A point
+      const tamperedA = refund.AStar.multiply(group.scalarFromBigint(2n));
+      const tamperedRefund = { ...refund, AStar: tamperedA };
+
+      // Should fail to construct token
+      expect(() =>
+        constructRefundToken(params, issuerKeys.publicKey, spendProof, tamperedRefund, spendState)
+      ).toThrow(ACTError);
+    });
+
+    it('rejects tampered refund (modified pok)', () => {
+      const rng = makeRng(0x45);
+      const ctx = group.scalarFromBigint(0n);
+
+      // Issue and spend
+      const [request, issueState] = issueRequest(params, ctx, rng);
+      const response = issueResponse(
+        params,
+        issuerKeys.privateKey,
+        request,
+        100n,
+        ctx,
+        rng
+      );
+      const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
+      const [spendProof, spendState] = proveSpend(params, token, 30n, rng);
+      const refund = issueRefund(params, issuerKeys.privateKey, spendProof, 0n, rng);
+
+      // Tamper with the pok
+      const tamperedPok = new Uint8Array(refund.pok);
+      tamperedPok[0] ^= 0xff;
+      const tamperedRefund = { ...refund, pok: tamperedPok };
+
+      // Should fail to construct token
+      expect(() =>
+        constructRefundToken(params, issuerKeys.publicKey, spendProof, tamperedRefund, spendState)
+      ).toThrow(ACTError);
+    });
+
+    it('rejects zero e signature attack on issuance', () => {
+      const rng = makeRng(0x46);
+      const ctx = group.scalarFromBigint(0n);
+
+      // Create legitimate issuance
+      const [request, issueState] = issueRequest(params, ctx, rng);
+      const response = issueResponse(
+        params,
+        issuerKeys.privateKey,
+        request,
+        100n,
+        ctx,
+        rng
+      );
+
+      // Tamper: set e to zero
+      const zeroE = group.scalarFromBigint(0n);
+      const tamperedResponse = { ...response, e: zeroE };
+
+      // Should reject (either ACTError or underlying crypto error)
+      expect(() =>
+        verifyIssuance(params, issuerKeys.publicKey, tamperedResponse, issueState)
+      ).toThrow();
+    });
+
+    it('rejects identity point attack on A in issuance response', () => {
+      const rng = makeRng(0x47);
+      const ctx = group.scalarFromBigint(0n);
+
+      // Create legitimate issuance
+      const [request, issueState] = issueRequest(params, ctx, rng);
+      const response = issueResponse(
+        params,
+        issuerKeys.privateKey,
+        request,
+        100n,
+        ctx,
+        rng
+      );
+
+      // Tamper: set A to identity
+      const identity = group.identity();
+      const tamperedResponse = { ...response, A: identity };
+
+      // Should reject (identity point creates invalid signature)
+      expect(() =>
+        verifyIssuance(params, issuerKeys.publicKey, tamperedResponse, issueState)
+      ).toThrow(ACTError);
+    });
+
+    it('rejects identity A_prime in spend proof', () => {
+      const rng = makeRng(0x48);
+      const ctx = group.scalarFromBigint(0n);
+
+      // Issue valid token
+      const [request, issueState] = issueRequest(params, ctx, rng);
+      const response = issueResponse(
+        params,
+        issuerKeys.privateKey,
+        request,
+        100n,
+        ctx,
+        rng
+      );
+      const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
+
+      // Create spend proof
+      const [spendProof, _] = proveSpend(params, token, 30n, rng);
+
+      // Tamper: set A_prime to identity
+      const tamperedProof = { ...spendProof, APrime: group.identity() };
+
+      // Should reject - identity A_prime is invalid
+      expect(() =>
+        verifySpendProof(params, issuerKeys.privateKey, tamperedProof)
+      ).toThrow(ACTError);
+    });
+
+    it('rejects tampered spend proof (modified pok)', () => {
+      const rng = makeRng(0x49);
+      const ctx = group.scalarFromBigint(0n);
+
+      // Issue valid token
+      const [request, issueState] = issueRequest(params, ctx, rng);
+      const response = issueResponse(
+        params,
+        issuerKeys.privateKey,
+        request,
+        100n,
+        ctx,
+        rng
+      );
+      const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
+
+      // Create spend proof
+      const [spendProof, _] = proveSpend(params, token, 30n, rng);
+
+      // Tamper with pok
+      const tamperedPok = new Uint8Array(spendProof.pok);
+      tamperedPok[0] ^= 0xff;
+      const tamperedProof = { ...spendProof, pok: tamperedPok };
+
+      // Should reject
+      expect(() =>
+        verifySpendProof(params, issuerKeys.privateKey, tamperedProof)
+      ).toThrow(ACTError);
+    });
+
+    it('rejects tampered spend amount', () => {
+      const rng = makeRng(0x4a);
+      const ctx = group.scalarFromBigint(0n);
+
+      // Issue valid token
+      const [request, issueState] = issueRequest(params, ctx, rng);
+      const response = issueResponse(
+        params,
+        issuerKeys.privateKey,
+        request,
+        100n,
+        ctx,
+        rng
+      );
+      const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
+
+      // Create spend proof for 30
+      const [spendProof, _] = proveSpend(params, token, 30n, rng);
+
+      // Tamper: claim we're only spending 10
+      const tamperedProof = { ...spendProof, s: 10n };
+
+      // Should reject - commitment doesn't match claimed amount
+      expect(() =>
+        verifySpendProof(params, issuerKeys.privateKey, tamperedProof)
+      ).toThrow(ACTError);
+    });
+  });
 });
