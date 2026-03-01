@@ -109,7 +109,7 @@ jobs:
 
       - name: Run benchmarks
         run: |
-          cd packages/act
+          cd packages/act-ts
           npx vitest bench --run --reporter=json > benchmark-results.json 2>&1 || true
         continue-on-error: true
 
@@ -119,7 +119,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const path = './packages/act/benchmark-results.json';
+            const path = './packages/act-ts/benchmark-results.json';
 
             if (!fs.existsSync(path)) {
               console.log('No benchmark results found');
