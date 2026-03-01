@@ -63,6 +63,9 @@ export {
 // Transcript (for advanced use)
 export { Transcript, SimpleTranscript, PROTOCOL_VERSION } from './transcript.js';
 
+// Utilities
+export { toHex } from './rng.js';
+
 // CBOR wire format (Section 4)
 export {
   encodeIssuanceRequest,

@@ -13,6 +13,11 @@
 
 import { LinearRelation, SchnorrProof, ristretto255 } from '../src/index.js';
 
+/** Convert bytes to hex string (Workers-compatible) */
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 const group = ristretto255;
 
 // === Setup ===
@@ -30,7 +35,7 @@ const C = G.multiply(x).add(H.multiply(r));
 
 console.log('=== Pedersen Commitment: PoK{(x, r): C = x·G + r·H} ===\n');
 console.log('Committed value x = 42');
-console.log('Commitment C:', Buffer.from(C.toBytes()).toString('hex').slice(0, 32) + '...\n');
+console.log('Commitment C:', toHex(C.toBytes()).slice(0, 32) + '...\n');
 
 // === Define Relation ===
 

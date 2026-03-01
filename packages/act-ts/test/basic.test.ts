@@ -25,6 +25,7 @@ import {
   group,
   ACTError,
   ACTErrorCode,
+  toHex,
 } from '../src/index.js';
 
 describe('SystemParams', () => {
@@ -292,7 +293,7 @@ describe('Double-spend prevention', () => {
     const [proof1, _state1] = proveSpend(params, token, 50n);
 
     // Manually track nullifier
-    const nullifierKey = Buffer.from(proof1.k.toBytes()).toString('hex');
+    const nullifierKey = toHex(proof1.k.toBytes());
     expect(usedNullifiers.has(nullifierKey)).toBe(false);
 
     verifySpendProof(params, privateKey, proof1);
@@ -302,7 +303,7 @@ describe('Double-spend prevention', () => {
     const [proof2, _state2] = proveSpend(params, token, 30n);
 
     // Same nullifier should be detected
-    const nullifier2Key = Buffer.from(proof2.k.toBytes()).toString('hex');
+    const nullifier2Key = toHex(proof2.k.toBytes());
     expect(nullifier2Key).toBe(nullifierKey);
     expect(usedNullifiers.has(nullifier2Key)).toBe(true);
   });

@@ -19,6 +19,7 @@ import {
   constructRefundToken,
   group,
   ACTError,
+  toHex,
   type CreditToken,
 } from '../src/index.js';
 
@@ -57,7 +58,7 @@ export async function fullFlowExample(): Promise<void> {
   console.log('--- Phase 3: Double-Spend Prevention ---');
 
   // Save the current token's nullifier
-  const savedNullifier = Buffer.from(token.k.toBytes()).toString('hex');
+  const savedNullifier = toHex(token.k.toBytes());
 
   // Spend normally
   const [proof1, spendState1] = proveSpend(params, token, 10n);

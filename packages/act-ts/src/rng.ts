@@ -61,3 +61,11 @@ export class SeededPRNG implements PRNG {
  * Default PRNG for production use.
  */
 export const defaultPRNG = new WebCryptoPRNG();
+
+/**
+ * Convert Uint8Array to hex string.
+ * Workers-compatible (no Buffer dependency).
+ */
+export function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}

@@ -145,8 +145,27 @@ describe('Debug Spend', () => {
     verifySpendProof(params, sk, spendProof);
   });
 
-  it.skip.each([1, 2, 3])('runs full spend proof flow L=%i (TODO: fix small L)', (L) => {
-    // Small L values fail - needs investigation
-    // The issue might be related to how the range proof handles small bit decompositions
+  it.each([1, 2, 3])('runs full spend proof flow L=%i (small L)', (L) => {
+    const group = ristretto255;
+    const seed = new Uint8Array(32);
+    seed[0] = 0xdd + L;
+    const rng = new SeededPRNG(seed);
+
+    const maxValue = (1n << BigInt(L)) - 1n;
+    const creditAmount = maxValue;
+    const spendAmount = creditAmount > 0n ? 1n : 0n;
+
+    const params = generateParameters(group, 'ACT-v1:test:debug:smallL:2026', L);
+    const { privateKey: sk, publicKey: pk } = keyGen(group, rng);
+
+    // Issue a token
+    const ctx = group.scalarFromBigint(0n);
+    const [request, issueState] = issueRequest(params, ctx, rng);
+    const response = issueResponse(params, sk, request, creditAmount, ctx, rng);
+    const token = verifyIssuance(params, pk, response, issueState);
+
+    // Try to spend
+    const [spendProof, _] = proveSpend(params, token, spendAmount, rng);
+    verifySpendProof(params, sk, spendProof);
   });
 });

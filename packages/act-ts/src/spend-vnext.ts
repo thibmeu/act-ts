@@ -22,6 +22,7 @@ import type {
 } from './types-vnext.js';
 import { ACTError, ACTErrorCode } from './types-vnext.js';
 import { serializeProof, deserializeProof } from './issuance-vnext.js';
+import { toHex } from './rng.js';
 
 /**
  * Cached common scalars per group to avoid redundant scalarFromBigint() calls.
@@ -860,7 +861,7 @@ export function verifyAndRefund(
   rng: PRNG
 ): Refund {
   // Check nullifier hasn't been used
-  const nullifierKey = Buffer.from(proof.k.toBytes()).toString('hex');
+  const nullifierKey = toHex(proof.k.toBytes());
   if (usedNullifiers.has(nullifierKey)) {
     throw new ACTError('Double spend detected', ACTErrorCode.DoubleSpend);
   }

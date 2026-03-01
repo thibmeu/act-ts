@@ -15,6 +15,7 @@ import {
   issueResponse,
   verifyIssuance,
   group,
+  toHex,
 } from '../src/index.js';
 
 export async function issuanceExample(): Promise<void> {
@@ -28,7 +29,7 @@ export async function issuanceExample(): Promise<void> {
 
   console.log(`Domain: ${domainSeparator}`);
   console.log(`Bit length: ${L} (max credits: ${(1n << BigInt(L)) - 1n})`);
-  console.log(`Public key: ${Buffer.from(pk.W.toBytes()).toString('hex').slice(0, 32)}...`);
+  console.log(`Public key: ${toHex(pk.W.toBytes()).slice(0, 32)}...`);
   console.log();
 
   // Application context (e.g., derived from TokenChallenge)
@@ -44,9 +45,7 @@ export async function issuanceExample(): Promise<void> {
   // (request, state) = IssueRequest(params)
   const [request, clientState] = issueRequest(params);
   console.log('Step 1: Client creates issuance request');
-  console.log(
-    `  K (commitment): ${Buffer.from(request.K.toBytes()).toString('hex').slice(0, 32)}...`
-  );
+  console.log(`  K (commitment): ${toHex(request.K.toBytes()).slice(0, 32)}...`);
   console.log();
 
   //
@@ -63,9 +62,7 @@ export async function issuanceExample(): Promise<void> {
   const response = issueResponse(params, sk, request, credits, ctx);
   console.log('Step 2: Issuer creates response');
   console.log(`  Credits issued: ${credits}`);
-  console.log(
-    `  A (signature): ${Buffer.from(response.A.toBytes()).toString('hex').slice(0, 32)}...`
-  );
+  console.log(`  A (signature): ${toHex(response.A.toBytes()).slice(0, 32)}...`);
   console.log();
 
   //
@@ -80,7 +77,7 @@ export async function issuanceExample(): Promise<void> {
   const token = verifyIssuance(params, pk, request, response, clientState);
   console.log('Step 3: Client verifies and extracts token');
   console.log(`  Token balance: ${token.c} credits`);
-  console.log(`  Nullifier: ${Buffer.from(token.k.toBytes()).toString('hex').slice(0, 32)}...`);
+  console.log(`  Nullifier: ${toHex(token.k.toBytes()).slice(0, 32)}...`);
   console.log();
 
   console.log('Issuance complete!');

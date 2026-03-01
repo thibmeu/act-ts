@@ -23,6 +23,7 @@ import {
   encodeCreditToken,
   decodeCreditToken,
   group,
+  toHex,
 } from '../src/index.js';
 
 export async function wireFormatExample(): Promise<void> {
@@ -39,7 +40,7 @@ export async function wireFormatExample(): Promise<void> {
 
   const requestBytes = encodeIssuanceRequest(request);
   console.log(`Encoded request: ${requestBytes.length} bytes`);
-  console.log(`  Hex: ${Buffer.from(requestBytes).toString('hex').slice(0, 64)}...`);
+  console.log(`  Hex: ${toHex(requestBytes).slice(0, 64)}...`);
 
   const decodedRequest = decodeIssuanceRequest(requestBytes);
   console.log(`  Round-trip: OK`);
@@ -51,7 +52,7 @@ export async function wireFormatExample(): Promise<void> {
 
   const responseBytes = encodeIssuanceResponse(response);
   console.log(`Encoded response: ${responseBytes.length} bytes`);
-  console.log(`  Hex: ${Buffer.from(responseBytes).toString('hex').slice(0, 64)}...`);
+  console.log(`  Hex: ${toHex(responseBytes).slice(0, 64)}...`);
 
   const decodedResponse = decodeIssuanceResponse(responseBytes);
   console.log(`  Round-trip: OK`);
@@ -63,7 +64,7 @@ export async function wireFormatExample(): Promise<void> {
 
   const tokenBytes = encodeCreditToken(token);
   console.log(`Encoded token: ${tokenBytes.length} bytes`);
-  console.log(`  Hex: ${Buffer.from(tokenBytes).toString('hex').slice(0, 64)}...`);
+  console.log(`  Hex: ${toHex(tokenBytes).slice(0, 64)}...`);
 
   const decodedToken = decodeCreditToken(tokenBytes);
   console.log(`  Balance: ${decodedToken.c} credits`);
@@ -76,7 +77,7 @@ export async function wireFormatExample(): Promise<void> {
 
   const proofBytes = encodeSpendProof(proof);
   console.log(`Encoded proof: ${proofBytes.length} bytes`);
-  console.log(`  Hex: ${Buffer.from(proofBytes).toString('hex').slice(0, 64)}...`);
+  console.log(`  Hex: ${toHex(proofBytes).slice(0, 64)}...`);
 
   const decodedProof = decodeSpendProof(proofBytes);
   console.log(`  Spend amount: ${decodedProof.s}`);

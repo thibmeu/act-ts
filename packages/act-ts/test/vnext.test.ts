@@ -17,6 +17,7 @@ import {
   verifyAndRefund,
   SeededPRNG,
   ACTError,
+  toHex,
   type SystemParams,
   type KeyPair,
   type PRNG,
@@ -435,7 +436,7 @@ describe('ACT VNEXT', () => {
         verifySpendProof(params, issuerKeys.privateKey, spendProof);
 
         // Track nullifier (as hex string for easy comparison)
-        const nullifierHex = Buffer.from(spendProof.k.toBytes()).toString('hex');
+        const nullifierHex = toHex(spendProof.k.toBytes());
         expect(nullifiers).not.toContain(nullifierHex);
         nullifiers.push(nullifierHex);
 
@@ -465,7 +466,7 @@ describe('ACT VNEXT', () => {
 
         // Spend and get nullifier
         const [spendProof, _] = proveSpend(paramsL4, token, 5n, rng);
-        const nullifierHex = Buffer.from(spendProof.k.toBytes()).toString('hex');
+        const nullifierHex = toHex(spendProof.k.toBytes());
 
         // Check for collision
         expect(nullifiers.has(nullifierHex)).toBe(false);

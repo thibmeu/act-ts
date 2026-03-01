@@ -9,6 +9,11 @@
 
 import { LinearRelation, SchnorrProof, ristretto255 } from '../src/index.js';
 
+/** Convert bytes to hex string (Workers-compatible) */
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 const group = ristretto255;
 
 // === Setup ===
@@ -19,8 +24,8 @@ const x = group.randomScalar(); // Prover's secret
 const X = G.multiply(x); // Public value
 
 console.log('=== Schnorr Proof: PoK{(x): X = x·G} ===\n');
-console.log('Secret x:', Buffer.from(x.toBytes()).toString('hex').slice(0, 16) + '...');
-console.log('Public X:', Buffer.from(X.toBytes()).toString('hex').slice(0, 16) + '...\n');
+console.log('Secret x:', toHex(x.toBytes()).slice(0, 16) + '...');
+console.log('Public X:', toHex(X.toBytes()).slice(0, 16) + '...\n');
 
 // === Define Relation ===
 
@@ -47,23 +52,17 @@ const proof = new SchnorrProof(relation);
 // Step 1: Prover commits
 console.log('Step 1: Prover commits...');
 const prover = proof.proverCommit([x]);
-console.log(
-  'Commitment:',
-  prover.commitment.map((e) => Buffer.from(e.toBytes()).toString('hex').slice(0, 16) + '...')
-);
+console.log('Commitment:', prover.commitment.map((e) => toHex(e.toBytes()).slice(0, 16) + '...'));
 
 // Step 2: Verifier sends random challenge
 console.log('\nStep 2: Verifier sends challenge...');
 const challenge = group.randomScalar();
-console.log('Challenge:', Buffer.from(challenge.toBytes()).toString('hex').slice(0, 16) + '...');
+console.log('Challenge:', toHex(challenge.toBytes()).slice(0, 16) + '...');
 
 // Step 3: Prover responds (one-shot - consumes the state)
 console.log('\nStep 3: Prover responds...');
 const response = prover.respond(challenge);
-console.log(
-  'Response:',
-  response.map((s) => Buffer.from(s.toBytes()).toString('hex').slice(0, 16) + '...')
-);
+console.log('Response:', response.map((s) => toHex(s.toBytes()).slice(0, 16) + '...'));
 
 // Step 4: Verifier checks
 console.log('\nStep 4: Verifier checks...');

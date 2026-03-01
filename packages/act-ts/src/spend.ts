@@ -22,6 +22,7 @@ import type {
 import { ACTError, ACTErrorCode } from './types.js';
 import { group } from './group.js';
 import { Transcript } from './transcript.js';
+import { toHex } from './rng.js';
 
 /**
  * BitDecompose (Section 3.5.4)
@@ -637,7 +638,7 @@ export function verifyAndRefund(
   t: bigint = 0n
 ): Refund {
   // Check nullifier hasn't been used
-  const nullifierKey = Buffer.from(proof.k.toBytes()).toString('hex');
+  const nullifierKey = toHex(proof.k.toBytes());
   if (usedNullifiers.has(nullifierKey)) {
     throw new ACTError('Double spend detected', ACTErrorCode.DoubleSpend);
   }

@@ -11,6 +11,7 @@ import { shake128 } from '@noble/hashes/sha3';
 import type { Group } from 'sigma-proofs';
 import type { SystemParams, GroupElement } from './types-vnext.js';
 import { ACTError, ACTErrorCode } from './types-vnext.js';
+import { toHex } from './rng.js';
 
 /**
  * Concatenate Uint8Arrays
@@ -86,7 +87,7 @@ export function setGenerators(
 
     // Check all 5 are distinct (set accumulator approach per armfazh suggestion)
     const elements = [G0, H1, H2, H3, H4];
-    const serialized = new Set(elements.map((e) => Buffer.from(e.toBytes()).toString('hex')));
+    const serialized = new Set(elements.map((e) => toHex(e.toBytes())));
 
     if (serialized.size === 5) {
       return [H1, H2, H3, H4];
