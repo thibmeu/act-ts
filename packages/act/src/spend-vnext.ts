@@ -29,6 +29,33 @@ import { ACTError, ACTErrorCode } from './types-vnext.js';
 import { serializeProof, deserializeProof } from './issuance-vnext.js';
 
 /**
+ * Cached common scalars per group to avoid redundant scalarFromBigint() calls.
+ * Uses WeakMap to allow GC of unused groups.
+ */
+const cachedOne = new WeakMap<Group, Scalar>();
+const cachedZero = new WeakMap<Group, Scalar>();
+
+/** Get cached scalar 1 for group */
+function getOne(group: Group): Scalar {
+  let one = cachedOne.get(group);
+  if (one === undefined) {
+    one = group.scalarFromBigint(1n);
+    cachedOne.set(group, one);
+  }
+  return one;
+}
+
+/** Get cached scalar 0 for group */
+function getZero(group: Group): Scalar {
+  let zero = cachedZero.get(group);
+  if (zero === undefined) {
+    zero = group.scalarFromBigint(0n);
+    cachedZero.set(group, zero);
+  }
+  return zero;
+}
+
+/**
  * Concatenate Uint8Arrays
  */
 function concat(...arrays: Uint8Array[]): Uint8Array {
@@ -204,7 +231,7 @@ function buildSpendRelation(
 } {
   const { group, H1, H2, H3, H4, L } = params;
   const G = group.generator();
-  const one = group.scalarFromBigint(1n);
+  const one = getOne(group);
 
   // H1' = G + k*H2 + ctx*H4 (public, derived from k and ctx in proof)
   // Actually H1' uses the ctx from token, but k is revealed in the proof
@@ -447,7 +474,7 @@ export function proveSpend(
   }
 
   const G = group.generator();
-  const one = group.scalarFromBigint(1n);
+  const one = getOne(group);
   const cScalar = group.scalarFromBigint(c);
 
   // Randomize the signature with non-zero scalars
@@ -523,11 +550,18 @@ export function proveSpend(
   const s2: Scalar[] = new Array<Scalar>(L);
   const Com: GroupElement[] = new Array<GroupElement>(L);
 
+  // Cache scalar 0 and 1 for bit conversion (bits are always 0n or 1n)
+  const zero = getZero(group);
+  const scalarBits: Scalar[] = new Array<Scalar>(L);
+  for (let j = 0; j < L; j++) {
+    scalarBits[j] = bits[j] === 1n ? one : zero;
+  }
+
   for (let j = 0; j < L; j++) {
     const sj = randomNonZeroScalar(group, rng);
     sCom[j] = sj;
 
-    const bj = group.scalarFromBigint(bits[j]!);
+    const bj = scalarBits[j]!;
 
     // Com[j] = b[j]*H1 + s[j]*H3 (+ kstar*H2 for j=0)
     if (j === 0) {
@@ -546,8 +580,8 @@ export function proveSpend(
 
   // Compute kStar2 = (1 - b[0]) * kStar
   // This is needed for the binary constraint on Com[0]
-  const b0 = bits[0]!;
-  const oneMinusB0 = one.sub(group.scalarFromBigint(b0));
+  const b0Scalar = scalarBits[0]!;
+  const oneMinusB0 = one.sub(b0Scalar);
   const kStar2 = oneMinusB0.mul(kStar);
 
   // Build relation
@@ -684,7 +718,7 @@ export function issueRefund(
   const KPrime = pow2WeightedSum(Com);
 
   const G = group.generator();
-  const one = group.scalarFromBigint(1n);
+  const one = getOne(group);
 
   // Create new BBS signature
   const eStar = randomNonZeroScalar(group, rng);
@@ -753,7 +787,7 @@ export function constructRefundToken(
   const KPrime = pow2WeightedSum(Com);
 
   const G = group.generator();
-  const one = group.scalarFromBigint(1n);
+  const one = getOne(group);
   const tScalar = group.scalarFromBigint(t);
 
   // X_A* = G + K' + t*H1 + ctx*H4
