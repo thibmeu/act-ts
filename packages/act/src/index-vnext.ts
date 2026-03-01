@@ -66,6 +66,30 @@ export {
   verifyAndRefund,
 } from './spend-vnext.js';
 
+// TLS wire format encoding
+export {
+  encodeIssuanceRequest,
+  decodeIssuanceRequest,
+  encodeIssuanceResponse,
+  decodeIssuanceResponse,
+  encodeSpendProof,
+  decodeSpendProof,
+  encodeRefund,
+  decodeRefund,
+  encodeCreditToken,
+  decodeCreditToken,
+  encodeIssuanceState,
+  decodeIssuanceState,
+  encodeSpendState,
+  decodeSpendState,
+  encodePrivateKey,
+  decodePrivateKey,
+  encodePublicKey,
+  decodePublicKey,
+  EncodingError,
+  EncodingErrorCode,
+} from './encoding-vnext.js';
+
 // RNG implementations
 export { WebCryptoPRNG, SeededPRNG, defaultPRNG } from './rng.js';
 
