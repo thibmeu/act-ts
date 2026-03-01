@@ -57,143 +57,153 @@ export enum EncodingErrorCode {
   InvalidL = 6,
 }
 
-// --- Low-level helpers ---
+// --- Low-level helpers using DataView ---
 
-function writeElement(buf: Uint8Array[], elem: GroupElement): void {
-  buf.push(elem.toBytes());
-}
+/**
+ * Writer helper that collects byte chunks for efficient concatenation.
+ */
+class Writer {
+  private parts: Uint8Array[] = [];
 
-function writeScalar(buf: Uint8Array[], scalar: Scalar): void {
-  buf.push(scalar.toBytes());
-}
-
-function writeBigint(buf: Uint8Array[], value: bigint, scalarSize: number): void {
-  // Encode bigint as little-endian bytes (same as scalar encoding)
-  const bytes = new Uint8Array(scalarSize);
-  let v = value;
-  for (let i = 0; i < scalarSize; i++) {
-    bytes[i] = Number(v & 0xffn);
-    v >>= 8n;
+  writeBytes(bytes: Uint8Array): void {
+    this.parts.push(bytes);
   }
-  buf.push(bytes);
-}
 
-function writeVar(buf: Uint8Array[], data: Uint8Array): void {
-  if (data.length > 0xffff) {
-    throw new EncodingError('Variable field too long', EncodingErrorCode.TooLong);
+  writeElement(elem: GroupElement): void {
+    this.parts.push(elem.toBytes());
   }
-  const lenBuf = new Uint8Array(2);
-  lenBuf[0] = (data.length >> 8) & 0xff;
-  lenBuf[1] = data.length & 0xff;
-  buf.push(lenBuf);
-  buf.push(data);
-}
 
-function concat(parts: Uint8Array[]): Uint8Array {
-  const totalLen = parts.reduce((sum, p) => sum + p.length, 0);
-  const result = new Uint8Array(totalLen);
-  let offset = 0;
-  for (const part of parts) {
-    result.set(part, offset);
-    offset += part.length;
+  writeScalar(scalar: Scalar): void {
+    this.parts.push(scalar.toBytes());
   }
-  return result;
-}
 
-function readElement(
-  group: Group,
-  data: Uint8Array,
-  offset: { value: number }
-): GroupElement {
-  const size = group.elementSize;
-  if (data.length < offset.value + size) {
-    throw new EncodingError('Data too short for element', EncodingErrorCode.TooShort);
+  /** Write bigint as little-endian bytes (same encoding as scalars) */
+  writeBigintLE(value: bigint, size: number): void {
+    const bytes = new Uint8Array(size);
+    let v = value;
+    for (let i = 0; i < size; i++) {
+      bytes[i] = Number(v & 0xffn);
+      v >>= 8n;
+    }
+    this.parts.push(bytes);
   }
-  const bytes = data.subarray(offset.value, offset.value + size);
-  offset.value += size;
-  const elem = group.elementFromBytes(bytes);
-  // Check for identity point (invalid in protocol)
-  if (elem.equals(group.identity())) {
-    throw new EncodingError('Identity point not allowed', EncodingErrorCode.InvalidPoint);
-  }
-  return elem;
-}
 
-function readScalar(
-  group: Group,
-  data: Uint8Array,
-  offset: { value: number }
-): Scalar {
-  const size = group.scalarSize;
-  if (data.length < offset.value + size) {
-    throw new EncodingError('Data too short for scalar', EncodingErrorCode.TooShort);
+  /** Write variable-length field with 2-byte big-endian length prefix */
+  writeVar(data: Uint8Array): void {
+    if (data.length > 0xffff) {
+      throw new EncodingError('Variable field too long', EncodingErrorCode.TooLong);
+    }
+    const lenBuf = new Uint8Array(2);
+    new DataView(lenBuf.buffer).setUint16(0, data.length, false); // big-endian
+    this.parts.push(lenBuf);
+    this.parts.push(data);
   }
-  const bytes = data.subarray(offset.value, offset.value + size);
-  offset.value += size;
-  try {
-    return group.scalarFromBytes(bytes);
-  } catch {
-    throw new EncodingError('Invalid scalar encoding', EncodingErrorCode.InvalidScalar);
+
+  toBytes(): Uint8Array {
+    const totalLen = this.parts.reduce((sum, p) => sum + p.length, 0);
+    const result = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const part of this.parts) {
+      result.set(part, offset);
+      offset += part.length;
+    }
+    return result;
   }
 }
 
-function readBigint(
-  data: Uint8Array,
-  offset: { value: number },
-  scalarSize: number
-): bigint {
-  if (data.length < offset.value + scalarSize) {
-    throw new EncodingError('Data too short for bigint', EncodingErrorCode.TooShort);
-  }
-  // Decode little-endian bytes to bigint
-  let value = 0n;
-  for (let i = scalarSize - 1; i >= 0; i--) {
-    value = (value << 8n) | BigInt(data[offset.value + i]!);
-  }
-  offset.value += scalarSize;
-  return value;
-}
+/**
+ * Reader helper with offset tracking and bounds checking.
+ */
+class Reader {
+  private readonly view: DataView;
+  private offset = 0;
 
-function readVar(data: Uint8Array, offset: { value: number }): Uint8Array {
-  if (data.length < offset.value + 2) {
-    throw new EncodingError('Data too short for length prefix', EncodingErrorCode.TooShort);
+  constructor(private readonly data: Uint8Array) {
+    this.view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   }
-  const len = (data[offset.value]! << 8) | data[offset.value + 1]!;
-  offset.value += 2;
-  if (data.length < offset.value + len) {
-    throw new EncodingError('Data too short for variable field', EncodingErrorCode.TooShort);
-  }
-  const result = data.slice(offset.value, offset.value + len);
-  offset.value += len;
-  return result;
-}
 
-function checkExact(data: Uint8Array, offset: number): void {
-  if (offset !== data.length) {
-    throw new EncodingError(
-      `Trailing data: ${data.length - offset} bytes`,
-      EncodingErrorCode.TrailingData
-    );
+  private ensureBytes(n: number): void {
+    if (this.offset + n > this.data.length) {
+      throw new EncodingError(
+        `Data too short: need ${n} bytes at offset ${this.offset}`,
+        EncodingErrorCode.TooShort
+      );
+    }
+  }
+
+  readElement(group: Group): GroupElement {
+    const size = group.elementSize;
+    this.ensureBytes(size);
+    const bytes = this.data.subarray(this.offset, this.offset + size);
+    this.offset += size;
+    const elem = group.elementFromBytes(bytes);
+    if (elem.equals(group.identity())) {
+      throw new EncodingError('Identity point not allowed', EncodingErrorCode.InvalidPoint);
+    }
+    return elem;
+  }
+
+  readScalar(group: Group): Scalar {
+    const size = group.scalarSize;
+    this.ensureBytes(size);
+    const bytes = this.data.subarray(this.offset, this.offset + size);
+    this.offset += size;
+    try {
+      return group.scalarFromBytes(bytes);
+    } catch {
+      throw new EncodingError('Invalid scalar encoding', EncodingErrorCode.InvalidScalar);
+    }
+  }
+
+  /** Read little-endian bigint */
+  readBigintLE(size: number): bigint {
+    this.ensureBytes(size);
+    let value = 0n;
+    for (let i = size - 1; i >= 0; i--) {
+      value = (value << 8n) | BigInt(this.data[this.offset + i]!);
+    }
+    this.offset += size;
+    return value;
+  }
+
+  /** Read variable-length field with 2-byte big-endian length prefix */
+  readVar(): Uint8Array {
+    this.ensureBytes(2);
+    const len = this.view.getUint16(this.offset, false); // big-endian
+    this.offset += 2;
+    this.ensureBytes(len);
+    const result = this.data.slice(this.offset, this.offset + len);
+    this.offset += len;
+    return result;
+  }
+
+  checkExact(): void {
+    if (this.offset !== this.data.length) {
+      throw new EncodingError(
+        `Trailing data: ${this.data.length - this.offset} bytes`,
+        EncodingErrorCode.TrailingData
+      );
+    }
   }
 }
 
 // --- IssuanceRequest: K[32] || len(pok)[2] || pok[...] ---
 
 export function encodeIssuanceRequest(req: IssuanceRequest): Uint8Array {
-  const buf: Uint8Array[] = [];
-  writeElement(buf, req.K);
-  writeVar(buf, req.pok);
-  return concat(buf);
+  const w = new Writer();
+  w.writeElement(req.K);
+  w.writeVar(req.pok);
+  return w.toBytes();
 }
 
 export function decodeIssuanceRequest(
   group: Group,
   data: Uint8Array
 ): IssuanceRequest {
-  const offset = { value: 0 };
-  const K = readElement(group, data, offset);
-  const pok = readVar(data, offset);
-  checkExact(data, offset.value);
+  const r = new Reader(data);
+  const K = r.readElement(group);
+  const pok = r.readVar();
+  r.checkExact();
   return { K, pok };
 }
 
@@ -203,43 +213,43 @@ export function encodeIssuanceResponse(
   group: Group,
   resp: IssuanceResponse & { ctx: Scalar }
 ): Uint8Array {
-  const buf: Uint8Array[] = [];
-  writeElement(buf, resp.A);
-  writeScalar(buf, resp.e);
-  writeBigint(buf, resp.c, group.scalarSize);
-  writeScalar(buf, resp.ctx);
-  writeVar(buf, resp.pok);
-  return concat(buf);
+  const w = new Writer();
+  w.writeElement(resp.A);
+  w.writeScalar(resp.e);
+  w.writeBigintLE(resp.c, group.scalarSize);
+  w.writeScalar(resp.ctx);
+  w.writeVar(resp.pok);
+  return w.toBytes();
 }
 
 export function decodeIssuanceResponse(
   group: Group,
   data: Uint8Array
 ): IssuanceResponse & { ctx: Scalar } {
-  const offset = { value: 0 };
-  const A = readElement(group, data, offset);
-  const e = readScalar(group, data, offset);
-  const c = readBigint(data, offset, group.scalarSize);
-  const ctx = readScalar(group, data, offset);
-  const pok = readVar(data, offset);
-  checkExact(data, offset.value);
+  const r = new Reader(data);
+  const A = r.readElement(group);
+  const e = r.readScalar(group);
+  const c = r.readBigintLE(group.scalarSize);
+  const ctx = r.readScalar(group);
+  const pok = r.readVar();
+  r.checkExact();
   return { A, e, c, ctx, pok };
 }
 
 // --- SpendProof: k[32] || s[32] || ctx[32] || A'[32] || B_bar[32] || Com[L*32] || len(pok)[2] || pok[...] ---
 
 export function encodeSpendProof(group: Group, proof: SpendProof): Uint8Array {
-  const buf: Uint8Array[] = [];
-  writeScalar(buf, proof.k);
-  writeBigint(buf, proof.s, group.scalarSize);
-  writeScalar(buf, proof.ctx);
-  writeElement(buf, proof.APrime);
-  writeElement(buf, proof.BBar);
+  const w = new Writer();
+  w.writeScalar(proof.k);
+  w.writeBigintLE(proof.s, group.scalarSize);
+  w.writeScalar(proof.ctx);
+  w.writeElement(proof.APrime);
+  w.writeElement(proof.BBar);
   for (const com of proof.Com) {
-    writeElement(buf, com);
+    w.writeElement(com);
   }
-  writeVar(buf, proof.pok);
-  return concat(buf);
+  w.writeVar(proof.pok);
+  return w.toBytes();
 }
 
 export function decodeSpendProof(
@@ -250,104 +260,104 @@ export function decodeSpendProof(
   if (L < 1 || L > 128) {
     throw new EncodingError('L must be 1-128', EncodingErrorCode.InvalidL);
   }
-  const offset = { value: 0 };
-  const k = readScalar(group, data, offset);
-  const s = readBigint(data, offset, group.scalarSize);
-  const ctx = readScalar(group, data, offset);
-  const APrime = readElement(group, data, offset);
-  const BBar = readElement(group, data, offset);
+  const r = new Reader(data);
+  const k = r.readScalar(group);
+  const s = r.readBigintLE(group.scalarSize);
+  const ctx = r.readScalar(group);
+  const APrime = r.readElement(group);
+  const BBar = r.readElement(group);
   const Com: GroupElement[] = [];
   for (let i = 0; i < L; i++) {
-    Com.push(readElement(group, data, offset));
+    Com.push(r.readElement(group));
   }
-  const pok = readVar(data, offset);
-  checkExact(data, offset.value);
+  const pok = r.readVar();
+  r.checkExact();
   return { k, s, ctx, APrime, BBar, Com, pok };
 }
 
 // --- Refund: A*[32] || e*[32] || t[32] || len(pok)[2] || pok[...] ---
 
 export function encodeRefund(group: Group, refund: Refund): Uint8Array {
-  const buf: Uint8Array[] = [];
-  writeElement(buf, refund.AStar);
-  writeScalar(buf, refund.eStar);
-  writeBigint(buf, refund.t, group.scalarSize);
-  writeVar(buf, refund.pok);
-  return concat(buf);
+  const w = new Writer();
+  w.writeElement(refund.AStar);
+  w.writeScalar(refund.eStar);
+  w.writeBigintLE(refund.t, group.scalarSize);
+  w.writeVar(refund.pok);
+  return w.toBytes();
 }
 
 export function decodeRefund(group: Group, data: Uint8Array): Refund {
-  const offset = { value: 0 };
-  const AStar = readElement(group, data, offset);
-  const eStar = readScalar(group, data, offset);
-  const t = readBigint(data, offset, group.scalarSize);
-  const pok = readVar(data, offset);
-  checkExact(data, offset.value);
+  const r = new Reader(data);
+  const AStar = r.readElement(group);
+  const eStar = r.readScalar(group);
+  const t = r.readBigintLE(group.scalarSize);
+  const pok = r.readVar();
+  r.checkExact();
   return { AStar, eStar, t, pok };
 }
 
 // --- CreditToken: A[32] || e[32] || k[32] || r[32] || c[32] || ctx[32] = 192 bytes ---
 
 export function encodeCreditToken(group: Group, token: CreditToken): Uint8Array {
-  const buf: Uint8Array[] = [];
-  writeElement(buf, token.A);
-  writeScalar(buf, token.e);
-  writeScalar(buf, token.k);
-  writeScalar(buf, token.r);
-  writeBigint(buf, token.c, group.scalarSize);
-  writeScalar(buf, token.ctx);
-  return concat(buf);
+  const w = new Writer();
+  w.writeElement(token.A);
+  w.writeScalar(token.e);
+  w.writeScalar(token.k);
+  w.writeScalar(token.r);
+  w.writeBigintLE(token.c, group.scalarSize);
+  w.writeScalar(token.ctx);
+  return w.toBytes();
 }
 
 export function decodeCreditToken(group: Group, data: Uint8Array): CreditToken {
-  const offset = { value: 0 };
-  const A = readElement(group, data, offset);
-  const e = readScalar(group, data, offset);
-  const k = readScalar(group, data, offset);
-  const r = readScalar(group, data, offset);
-  const c = readBigint(data, offset, group.scalarSize);
-  const ctx = readScalar(group, data, offset);
-  checkExact(data, offset.value);
-  return { A, e, k, r, c, ctx };
+  const r = new Reader(data);
+  const A = r.readElement(group);
+  const e = r.readScalar(group);
+  const k = r.readScalar(group);
+  const rScalar = r.readScalar(group);
+  const c = r.readBigintLE(group.scalarSize);
+  const ctx = r.readScalar(group);
+  r.checkExact();
+  return { A, e, k, r: rScalar, c, ctx };
 }
 
 // --- IssuanceState: r[32] || k[32] || ctx[32] = 96 bytes ---
 
 export function encodeIssuanceState(state: IssuanceState): Uint8Array {
-  const buf: Uint8Array[] = [];
-  writeScalar(buf, state.r);
-  writeScalar(buf, state.k);
-  writeScalar(buf, state.ctx);
-  return concat(buf);
+  const w = new Writer();
+  w.writeScalar(state.r);
+  w.writeScalar(state.k);
+  w.writeScalar(state.ctx);
+  return w.toBytes();
 }
 
 export function decodeIssuanceState(group: Group, data: Uint8Array): IssuanceState {
-  const offset = { value: 0 };
-  const r = readScalar(group, data, offset);
-  const k = readScalar(group, data, offset);
-  const ctx = readScalar(group, data, offset);
-  checkExact(data, offset.value);
+  const reader = new Reader(data);
+  const r = reader.readScalar(group);
+  const k = reader.readScalar(group);
+  const ctx = reader.readScalar(group);
+  reader.checkExact();
   return { r, k, ctx };
 }
 
 // --- SpendState: r[32] || k[32] || m[32] || ctx[32] = 128 bytes ---
 
 export function encodeSpendState(group: Group, state: SpendState): Uint8Array {
-  const buf: Uint8Array[] = [];
-  writeScalar(buf, state.rStar);
-  writeScalar(buf, state.kStar);
-  writeBigint(buf, state.m, group.scalarSize);
-  writeScalar(buf, state.ctx);
-  return concat(buf);
+  const w = new Writer();
+  w.writeScalar(state.rStar);
+  w.writeScalar(state.kStar);
+  w.writeBigintLE(state.m, group.scalarSize);
+  w.writeScalar(state.ctx);
+  return w.toBytes();
 }
 
 export function decodeSpendState(group: Group, data: Uint8Array): SpendState {
-  const offset = { value: 0 };
-  const rStar = readScalar(group, data, offset);
-  const kStar = readScalar(group, data, offset);
-  const m = readBigint(data, offset, group.scalarSize);
-  const ctx = readScalar(group, data, offset);
-  checkExact(data, offset.value);
+  const reader = new Reader(data);
+  const rStar = reader.readScalar(group);
+  const kStar = reader.readScalar(group);
+  const m = reader.readBigintLE(group.scalarSize);
+  const ctx = reader.readScalar(group);
+  reader.checkExact();
   return { rStar, kStar, m, ctx };
 }
 
@@ -358,9 +368,9 @@ export function encodePrivateKey(sk: PrivateKey): Uint8Array {
 }
 
 export function decodePrivateKey(group: Group, data: Uint8Array): PrivateKey {
-  const offset = { value: 0 };
-  const x = readScalar(group, data, offset);
-  checkExact(data, offset.value);
+  const reader = new Reader(data);
+  const x = reader.readScalar(group);
+  reader.checkExact();
   return { x };
 }
 
@@ -371,8 +381,8 @@ export function encodePublicKey(pk: PublicKey): Uint8Array {
 }
 
 export function decodePublicKey(group: Group, data: Uint8Array): PublicKey {
-  const offset = { value: 0 };
-  const W = readElement(group, data, offset);
-  checkExact(data, offset.value);
+  const reader = new Reader(data);
+  const W = reader.readElement(group);
+  reader.checkExact();
   return { W };
 }
