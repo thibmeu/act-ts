@@ -1,0 +1,3 @@
+[submodule "packages/privacypass-ts"]
+	path = packages/privacypass-ts
+	url = git@github.com:thibmeu/privacypass-ts.git
