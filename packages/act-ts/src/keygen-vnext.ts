@@ -56,10 +56,7 @@ export function privateKeyToBytes(sk: PrivateKey): Uint8Array {
 /**
  * Deserialize private key from bytes.
  */
-export function privateKeyFromBytes(
-  group: Group,
-  bytes: Uint8Array
-): PrivateKey {
+export function privateKeyFromBytes(group: Group, bytes: Uint8Array): PrivateKey {
   const x = group.scalarFromBytes(bytes);
   return { x };
 }
@@ -74,10 +71,7 @@ export function publicKeyToBytes(pk: PublicKey): Uint8Array {
 /**
  * Deserialize public key from bytes.
  */
-export function publicKeyFromBytes(
-  group: Group,
-  bytes: Uint8Array
-): PublicKey {
+export function publicKeyFromBytes(group: Group, bytes: Uint8Array): PublicKey {
   const W = group.elementFromBytes(bytes);
   return { W };
 }

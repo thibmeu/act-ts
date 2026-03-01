@@ -179,12 +179,12 @@ PRIVATE_CREDENTIAL_RESPONSE = 'application/private-credential-response';
 
 ## Blockers Before Implementation
 
-| Blocker                               | Status      |
-| ------------------------------------- | ----------- |
-| sigma-draft-compliance in act | In progress |
-| Fix `Buffer.from()` in spend.ts:654   | TODO        |
-| Add consumed flags to state types     | TODO        |
-| Improve CBOR error handling           | TODO        |
+| Blocker                             | Status      |
+| ----------------------------------- | ----------- |
+| sigma-draft-compliance in act       | In progress |
+| Fix `Buffer.from()` in spend.ts:654 | TODO        |
+| Add consumed flags to state types   | TODO        |
+| Improve CBOR error handling         | TODO        |
 
 ---
 

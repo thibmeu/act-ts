@@ -5,6 +5,7 @@ Sigma Protocols for zero-knowledge proofs in TypeScript.
 **Specification:** [draft-irtf-cfrg-sigma-protocols-01](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/)
 
 **Features:**
+
 - LinearRelation constraint system for composable proofs
 - Interactive SchnorrProof with prover/verifier/simulator
 - Non-interactive proofs via Fiat-Shamir (SHAKE128 sponge)

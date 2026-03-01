@@ -1,7 +1,7 @@
 {
   "description": "ACT Test Vectors from IETF draft-schlesinger-cfrg-act-01 Appendix A",
   "notes": "Generated deterministically using ChaCha20 RNG seeded with bytes 00 01 02 ... 1e 1f",
-  
+
   "parameters": {
     "domain_separator": "ACT-v1:test:vectors:v0:2025-01-01",
     "L": 8,

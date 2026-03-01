@@ -139,9 +139,7 @@ describe('Issuance', () => {
       kBar: group.randomScalar(), // Wrong response
     };
 
-    expect(() =>
-      issueResponse(params, privateKey, badRequest, 100n, ctx)
-    ).toThrow(ACTError);
+    expect(() => issueResponse(params, privateKey, badRequest, 100n, ctx)).toThrow(ACTError);
   });
 
   it('rejects invalid response proof', () => {
@@ -156,9 +154,7 @@ describe('Issuance', () => {
       z: group.randomScalar(), // Wrong response
     };
 
-    expect(() =>
-      verifyIssuance(params, publicKey, request, badResponse, state)
-    ).toThrow(ACTError);
+    expect(() => verifyIssuance(params, publicKey, request, badResponse, state)).toThrow(ACTError);
   });
 
   it('rejects credit amount exceeding 2^L', () => {
@@ -168,18 +164,14 @@ describe('Issuance', () => {
     // params.L = 64, so max is 2^64 - 1
     const tooBig = 1n << 64n;
 
-    expect(() =>
-      issueResponse(params, privateKey, request, tooBig, ctx)
-    ).toThrow(ACTError);
+    expect(() => issueResponse(params, privateKey, request, tooBig, ctx)).toThrow(ACTError);
   });
 
   it('rejects zero credit amount', () => {
     const ctx = group.randomScalar();
     const [request, _state] = issueRequest(params);
 
-    expect(() =>
-      issueResponse(params, privateKey, request, 0n, ctx)
-    ).toThrow(ACTError);
+    expect(() => issueResponse(params, privateKey, request, 0n, ctx)).toThrow(ACTError);
   });
 });
 

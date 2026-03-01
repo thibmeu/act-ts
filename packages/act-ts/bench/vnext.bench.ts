@@ -265,19 +265,49 @@ describe('Refund Token Creation (by L)', () => {
 
   const tokenL16 = createToken(paramsL16, issuerKeysL16, 100n, 0x401);
   const [proofL16, stateL16] = createSpendProof(paramsL16, issuerKeysL16, tokenL16, 30n, 0x411);
-  const refundL16 = issueRefund(paramsL16, issuerKeysL16.privateKey, proofL16, 0n, createRng(0x421));
+  const refundL16 = issueRefund(
+    paramsL16,
+    issuerKeysL16.privateKey,
+    proofL16,
+    0n,
+    createRng(0x421)
+  );
 
   const tokenL32 = createToken(paramsL32, issuerKeysL32, 100n, 0x402);
   const [proofL32, stateL32] = createSpendProof(paramsL32, issuerKeysL32, tokenL32, 30n, 0x412);
-  const refundL32 = issueRefund(paramsL32, issuerKeysL32.privateKey, proofL32, 0n, createRng(0x422));
+  const refundL32 = issueRefund(
+    paramsL32,
+    issuerKeysL32.privateKey,
+    proofL32,
+    0n,
+    createRng(0x422)
+  );
 
   const tokenL64 = createToken(paramsL64, issuerKeysL64, 100n, 0x403);
   const [proofL64, stateL64] = createSpendProof(paramsL64, issuerKeysL64, tokenL64, 30n, 0x413);
-  const refundL64 = issueRefund(paramsL64, issuerKeysL64.privateKey, proofL64, 0n, createRng(0x423));
+  const refundL64 = issueRefund(
+    paramsL64,
+    issuerKeysL64.privateKey,
+    proofL64,
+    0n,
+    createRng(0x423)
+  );
 
   const tokenL128 = createToken(paramsL128, issuerKeysL128, 100n, 0x404);
-  const [proofL128, stateL128] = createSpendProof(paramsL128, issuerKeysL128, tokenL128, 30n, 0x414);
-  const refundL128 = issueRefund(paramsL128, issuerKeysL128.privateKey, proofL128, 0n, createRng(0x424));
+  const [proofL128, stateL128] = createSpendProof(
+    paramsL128,
+    issuerKeysL128,
+    tokenL128,
+    30n,
+    0x414
+  );
+  const refundL128 = issueRefund(
+    paramsL128,
+    issuerKeysL128.privateKey,
+    proofL128,
+    0n,
+    createRng(0x424)
+  );
 
   bench('constructRefundToken L=8', () => {
     constructRefundToken(paramsL8, issuerKeysL8.publicKey, proofL8, refundL8, stateL8);

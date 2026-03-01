@@ -196,10 +196,7 @@ export function encodeIssuanceRequest(req: IssuanceRequest): Uint8Array {
   return w.toBytes();
 }
 
-export function decodeIssuanceRequest(
-  group: Group,
-  data: Uint8Array
-): IssuanceRequest {
+export function decodeIssuanceRequest(group: Group, data: Uint8Array): IssuanceRequest {
   const r = new Reader(data);
   const K = r.readElement(group);
   const pok = r.readVar();
@@ -252,11 +249,7 @@ export function encodeSpendProof(group: Group, proof: SpendProof): Uint8Array {
   return w.toBytes();
 }
 
-export function decodeSpendProof(
-  group: Group,
-  L: number,
-  data: Uint8Array
-): SpendProof {
+export function decodeSpendProof(group: Group, L: number, data: Uint8Array): SpendProof {
   if (L < 1 || L > 128) {
     throw new EncodingError('L must be 1-128', EncodingErrorCode.InvalidL);
   }

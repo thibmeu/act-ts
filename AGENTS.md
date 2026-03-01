@@ -38,26 +38,26 @@ docs/
 
 ## Specifications
 
-| Package | Spec | Notes |
-|---------|------|-------|
-| sigma-proofs | [draft-irtf-cfrg-sigma-protocols-01](https://www.ietf.org/archive/id/draft-irtf-cfrg-sigma-protocols-01.txt) | Complete |
-| act-ts | [draft-schlesinger-cfrg-act-01](https://www.ietf.org/archive/id/draft-schlesinger-cfrg-act-01.txt) | vnext uses algebraic range proofs |
-| privacypass-act | [draft-schlesinger-privacypass-act-01](https://datatracker.ietf.org/doc/html/draft-schlesinger-privacypass-act-01) | Blocked |
+| Package         | Spec                                                                                                               | Notes                             |
+| --------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
+| sigma-proofs    | [draft-irtf-cfrg-sigma-protocols-01](https://www.ietf.org/archive/id/draft-irtf-cfrg-sigma-protocols-01.txt)       | Complete                          |
+| act-ts          | [draft-schlesinger-cfrg-act-01](https://www.ietf.org/archive/id/draft-schlesinger-cfrg-act-01.txt)                 | vnext uses algebraic range proofs |
+| privacypass-act | [draft-schlesinger-privacypass-act-01](https://datatracker.ietf.org/doc/html/draft-schlesinger-privacypass-act-01) | Blocked                           |
 
 ---
 
 ## Where to Look
 
-| Task | Location |
-|------|----------|
-| Group operations | `sigma-proofs/src/ciphersuites/ristretto255.ts` |
-| Schnorr proofs | `sigma-proofs/src/schnorr.ts` |
-| Fiat-Shamir | `sigma-proofs/src/fiat-shamir/sponge.ts`, `ni-sigma.ts` |
-| ACT issuance | `act-ts/src/issuance-vnext.ts` |
-| ACT spending | `act-ts/src/spend-vnext.ts` |
-| Range proofs | `act-ts/src/spend-vnext.ts:buildSpendRelation()` |
-| TLS encoding | `act-ts/src/encoding-vnext.ts` |
-| System params | `act-ts/src/params-vnext.ts` |
+| Task             | Location                                                |
+| ---------------- | ------------------------------------------------------- |
+| Group operations | `sigma-proofs/src/ciphersuites/ristretto255.ts`         |
+| Schnorr proofs   | `sigma-proofs/src/schnorr.ts`                           |
+| Fiat-Shamir      | `sigma-proofs/src/fiat-shamir/sponge.ts`, `ni-sigma.ts` |
+| ACT issuance     | `act-ts/src/issuance-vnext.ts`                          |
+| ACT spending     | `act-ts/src/spend-vnext.ts`                             |
+| Range proofs     | `act-ts/src/spend-vnext.ts:buildSpendRelation()`        |
+| TLS encoding     | `act-ts/src/encoding-vnext.ts`                          |
+| System params    | `act-ts/src/params-vnext.ts`                            |
 
 ---
 
@@ -74,18 +74,21 @@ docs/
 ## Boundaries
 
 ### Always
+
 - Run `npm test` before commits
 - Use spec test vectors when available
 - Reference spec section numbers in comments
 - Mark unsupported features as `it.todo()` with reason
 
 ### Ask First
+
 - New dependencies beyond `@noble/*`
 - Deviating from IETF drafts
 - Changing public API
 - Adding ciphersuites
 
 ### Never
+
 - Fake/placeholder tests for crypto code
 - `any`, `!`, or `as` casts
 - Commit failing tests
@@ -105,24 +108,27 @@ docs/
 
 ## Current Status
 
-| Package | Status | Tests |
-|---------|--------|-------|
-| sigma-proofs | Complete | 112 |
-| act-ts | vnext active | 124 |
-| privacypass-act | Not started | 1 (placeholder) |
+| Package         | Status       | Tests           |
+| --------------- | ------------ | --------------- |
+| sigma-proofs    | Complete     | 112             |
+| act-ts          | vnext active | 124             |
+| privacypass-act | Not started  | 1 (placeholder) |
 
 ### What's Done (vnext)
+
 - SHAKE128 Fiat-Shamir (draft-irtf-cfrg-fiat-shamir-01)
 - Algebraic range proofs (replacing CDS OR-proofs)
 - TLS wire format (replacing CBOR)
 - Horner optimization for `pow2WeightedSum()`
 
 ### Known Issues
+
 - Small L values (1,2,3) fail in spend proofs
 - Test vectors incomplete (waiting on spec)
 - `Buffer.from()` usage in spend.ts needs fix
 
 ### Blocked
+
 - privacypass-act: Needs act-ts vnext completion
 - Interop testing: Needs Rust reference alignment
 
@@ -130,22 +136,22 @@ docs/
 
 ## Key Dependencies
 
-| Package | Purpose |
-|---------|---------|
+| Package         | Purpose                               |
+| --------------- | ------------------------------------- |
 | `@noble/curves` | Ristretto255, P-256, scalar/point ops |
-| `@noble/hashes` | SHAKE128, SHA-512 |
-| `cbor2` | CBOR encoding (old API) |
-| `fast-check` | Property-based testing |
+| `@noble/hashes` | SHAKE128, SHA-512                     |
+| `cbor2`         | CBOR encoding (old API)               |
+| `fast-check`    | Property-based testing                |
 
 ---
 
 ## Panel Reviews
 
-| Persona | Focus |
-|---------|-------|
-| IETF Security AD | Spec compliance, security properties |
+| Persona                   | Focus                                     |
+| ------------------------- | ----------------------------------------- |
+| IETF Security AD          | Spec compliance, security properties      |
 | CF Distinguished Engineer | Production-readiness, Workers constraints |
-| Crypto Library Maintainer | noble-curves patterns, constant-time |
-| ACT API Consumer | Usability, ergonomics |
+| Crypto Library Maintainer | noble-curves patterns, constant-time      |
+| ACT API Consumer          | Usability, ergonomics                     |
 
 See `docs/reviewers/` for checklists.

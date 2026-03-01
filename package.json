@@ -28,7 +28,9 @@
     "vitest": "3.2.3"
   },
   "workspaces": [
-    "packages/*"
+    "packages/sigma-proofs",
+    "packages/act-ts",
+    "packages/privacypass-act"
   ],
   "packageManager": "npm@11.3.0"
 }

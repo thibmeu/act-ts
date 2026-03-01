@@ -18,9 +18,7 @@ const Point = noble_ristretto255.Point;
 
 // Group order (same as ed25519 scalar field order)
 // q = 2^252 + 27742317777372353535851937790883648493
-const ORDER = BigInt(
-  '0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed'
-);
+const ORDER = BigInt('0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed');
 
 type RistrettoPoint = InstanceType<typeof Point>;
 

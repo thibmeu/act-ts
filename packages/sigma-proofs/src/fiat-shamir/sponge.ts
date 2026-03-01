@@ -50,9 +50,7 @@ export class Shake128Sponge implements DuplexSponge {
   /**
    * Clone constructor for internal use.
    */
-  private static fromState(
-    state: ReturnType<typeof shake128.create>
-  ): Shake128Sponge {
+  private static fromState(state: ReturnType<typeof shake128.create>): Shake128Sponge {
     const sponge = Object.create(Shake128Sponge.prototype) as Shake128Sponge;
     sponge.state = state;
     return sponge;

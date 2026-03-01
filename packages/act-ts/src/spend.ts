@@ -64,10 +64,7 @@ export function proveSpend(
     throw new ACTError(`Token balance ${c} >= 2^L`, ACTErrorCode.InvalidAmount);
   }
   if (s > c) {
-    throw new ACTError(
-      `Spend amount ${s} > balance ${c}`,
-      ACTErrorCode.InvalidAmount
-    );
+    throw new ACTError(`Spend amount ${s} > balance ${c}`, ACTErrorCode.InvalidAmount);
   }
 
   const G = group.generator();
@@ -103,10 +100,7 @@ export function proveSpend(
   const A1 = APrime.multiply(ePrime).add(BBar.multiply(r2Prime));
 
   // A2 = B_bar * r3' + H1 * c' + H3 * r'
-  const A2 = group.msm(
-    [r3Prime, cPrime, rPrime],
-    [BBar, params.H1, params.H3]
-  );
+  const A2 = group.msm([r3Prime, cPrime, rPrime], [BBar, params.H1, params.H3]);
 
   // Steps 23-25: Decompose c - s into bits (remaining balance m)
   const m = c - s;
@@ -121,9 +115,7 @@ export function proveSpend(
   const s0 = group.randomScalar();
   sBlinding.push(s0);
   const i0Scalar = group.scalarFromBigint(bits[0]);
-  Com.push(
-    group.msm([i0Scalar, kStar, s0], [params.H1, params.H2, params.H3])
-  );
+  Com.push(group.msm([i0Scalar, kStar, s0], [params.H1, params.H2, params.H3]));
 
   // For j = 1 to L-1: Com[j] = H1 * i[j] + H3 * s[j]
   for (let j = 1; j < L; j++) {
@@ -169,16 +161,12 @@ export function proveSpend(
         // Real branch is b=0: C'[0][0] = H2 * k0' + H3 * s'[0]
         // Simulated branch is b=1: C'[0][1] = H2 * w0 + H3 * z_sim[0][1] - C[0][1] * gamma0[0]
         const CPrime00 = group.msm([k0Prime, sPrimeJ], [params.H2, params.H3]);
-        const CPrime01 = group
-          .msm([w0, z1Sim], [params.H2, params.H3])
-          .sub(Cj1.multiply(gamma0J));
+        const CPrime01 = group.msm([w0, z1Sim], [params.H2, params.H3]).sub(Cj1.multiply(gamma0J));
         CPrimeProver.push([CPrime00, CPrime01]);
       } else {
         // Real branch is b=1: C'[0][1] = H2 * k0' + H3 * s'[0]
         // Simulated branch is b=0: C'[0][0] = H2 * w0 + H3 * z_sim[0][0] - C[0][0] * gamma0[0]
-        const CPrime00 = group
-          .msm([w0, z0Sim], [params.H2, params.H3])
-          .sub(Cj0.multiply(gamma0J));
+        const CPrime00 = group.msm([w0, z0Sim], [params.H2, params.H3]).sub(Cj0.multiply(gamma0J));
         const CPrime01 = group.msm([k0Prime, sPrimeJ], [params.H2, params.H3]);
         CPrimeProver.push([CPrime00, CPrime01]);
       }
@@ -215,10 +203,7 @@ export function proveSpend(
   const sPrime2 = group.randomScalar(); // Nonce for s_bar response
 
   // C_final = H1 * (-c') + H2 * k' + H3 * s'
-  const CFinal = group.msm(
-    [cPrime.neg(), kPrime2, sPrime2],
-    [params.H1, params.H2, params.H3]
-  );
+  const CFinal = group.msm([cPrime.neg(), kPrime2, sPrime2], [params.H1, params.H2, params.H3]);
 
   // Steps 73-86: Generate challenge using transcript
   const transcript = new Transcript('spend', params);
@@ -356,15 +341,26 @@ export function proveSpend(
  * @param proof - Spend proof from client
  * @returns true if valid
  */
-export function verifySpendProof(
-  params: SystemParams,
-  sk: PrivateKey,
-  proof: SpendProof
-): boolean {
+export function verifySpendProof(params: SystemParams, sk: PrivateKey, proof: SpendProof): boolean {
   const {
-    k, s, ctx, APrime, BBar, Com, gamma,
-    eBar, r2Bar, r3Bar, cBar, rBar,
-    w00, w01, gamma0, z, kBarFinal, sBarFinal,
+    k,
+    s,
+    ctx,
+    APrime,
+    BBar,
+    Com,
+    gamma,
+    eBar,
+    r2Bar,
+    r3Bar,
+    cBar,
+    rBar,
+    w00,
+    w01,
+    gamma0,
+    z,
+    kBarFinal,
+    sBarFinal,
   } = proof;
 
   const L = params.L;
@@ -372,7 +368,7 @@ export function verifySpendProof(
 
   // Step 3-4: Check A' is not identity
   if (APrime.isIdentity()) {
-    throw new ACTError('A\' is identity', ACTErrorCode.IdentityPoint);
+    throw new ACTError("A' is identity", ACTErrorCode.IdentityPoint);
   }
 
   // Steps 5-7: Compute issuer's view
@@ -380,22 +376,16 @@ export function verifySpendProof(
   const ABar = APrime.multiply(sk.x);
 
   // H1_prime = G + H2 * k + H4 * ctx
-  const H1Prime = group.msm(
-    [group.one(), k, ctx],
-    [G, params.H2, params.H4]
-  );
+  const H1Prime = group.msm([group.one(), k, ctx], [G, params.H2, params.H4]);
 
   // Steps 8-10: Verify sigma protocol
   // A1 = A' * e_bar + B_bar * r2_bar - A_bar * gamma
-  const A1 = APrime.multiply(eBar)
-    .add(BBar.multiply(r2Bar))
-    .sub(ABar.multiply(gamma));
+  const A1 = APrime.multiply(eBar).add(BBar.multiply(r2Bar)).sub(ABar.multiply(gamma));
 
   // A2 = B_bar * r3_bar + H1 * c_bar + H3 * r_bar - H1_prime * gamma
-  const A2 = group.msm(
-    [r3Bar, cBar, rBar],
-    [BBar, params.H1, params.H3]
-  ).sub(H1Prime.multiply(gamma));
+  const A2 = group
+    .msm([r3Bar, cBar, rBar], [BBar, params.H1, params.H3])
+    .sub(H1Prime.multiply(gamma));
 
   // Steps 11-27: Range proof verification
   const CPrime: [GroupElement, GroupElement][] = [];
@@ -408,11 +398,11 @@ export function verifySpendProof(
     if (j === 0) {
       // Steps 19-20: Bit 0 with k* component
       // C'[0][0] = H2 * w00 + H3 * z[0][0] - C[0][0] * gamma0[0]
-      const CPrime00 = group.msm([w00, z[0][0]], [params.H2, params.H3])
+      const CPrime00 = group
+        .msm([w00, z[0][0]], [params.H2, params.H3])
         .sub(Cj0.multiply(gamma0[0]));
       // C'[0][1] = H2 * w01 + H3 * z[0][1] - C[0][1] * gamma1[0]
-      const CPrime01 = group.msm([w01, z[0][1]], [params.H2, params.H3])
-        .sub(Cj1.multiply(gamma1J));
+      const CPrime01 = group.msm([w01, z[0][1]], [params.H2, params.H3]).sub(Cj1.multiply(gamma1J));
       CPrime.push([CPrime00, CPrime01]);
     } else {
       // Steps 22-27: Remaining bits
@@ -437,10 +427,9 @@ export function verifySpendProof(
   const ComTotal = params.H1.multiply(sScalar).add(KPrime);
 
   // C_final = H1 * (-c_bar) + H2 * k_bar + H3 * s_bar - Com_total * gamma
-  const CFinal = group.msm(
-    [cBar.neg(), kBarFinal, sBarFinal],
-    [params.H1, params.H2, params.H3]
-  ).sub(ComTotal.multiply(gamma));
+  const CFinal = group
+    .msm([cBar.neg(), kBarFinal, sBarFinal], [params.H1, params.H2, params.H3])
+    .sub(ComTotal.multiply(gamma));
 
   // Steps 32-46: Recompute challenge
   const transcript = new Transcript('spend', params);
@@ -494,10 +483,7 @@ export function issueRefund(
     throw new ACTError(`Return amount ${t} >= 2^L`, ACTErrorCode.InvalidAmount);
   }
   if (t > s) {
-    throw new ACTError(
-      `Return amount ${t} > spend amount ${s}`,
-      ACTErrorCode.InvalidAmount
-    );
+    throw new ACTError(`Return amount ${t} > spend amount ${s}`, ACTErrorCode.InvalidAmount);
   }
 
   // Reconstruct K' = Sum(Com[j] * 2^j for j in [L])

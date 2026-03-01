@@ -120,12 +120,12 @@ jobs:
           script: |
             const fs = require('fs');
             const path = './packages/act/benchmark-results.json';
-            
+
             if (!fs.existsSync(path)) {
               console.log('No benchmark results found');
               return;
             }
-            
+
             let results;
             try {
               results = JSON.parse(fs.readFileSync(path, 'utf8'));
@@ -133,19 +133,19 @@ jobs:
               console.log('Failed to parse benchmark results:', e);
               return;
             }
-            
+
             const body = `## Benchmark Results
-            
+
             <details>
             <summary>Click to expand</summary>
-            
+
             \`\`\`
             ${JSON.stringify(results, null, 2).slice(0, 60000)}
             \`\`\`
-            
+
             </details>
             `;
-            
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,

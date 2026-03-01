@@ -7,12 +7,7 @@
  * Uses LinearRelation from draft-irtf-cfrg-sigma-protocols for proof structure.
  */
 
-import {
-  LinearRelation,
-  NISigmaProtocol,
-  appendPedersen,
-  appendDleq,
-} from 'sigma-proofs';
+import { LinearRelation, NISigmaProtocol, appendPedersen, appendDleq } from 'sigma-proofs';
 import type {
   SystemParams,
   PrivateKey,

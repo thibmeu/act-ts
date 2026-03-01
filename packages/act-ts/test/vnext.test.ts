@@ -112,14 +112,14 @@ describe('ACT VNEXT', () => {
       const [request, _] = issueRequest(params, ctx, rng);
 
       // Negative amount
-      expect(() =>
-        issueResponse(params, issuerKeys.privateKey, request, -1n, ctx, rng)
-      ).toThrow(ACTError);
+      expect(() => issueResponse(params, issuerKeys.privateKey, request, -1n, ctx, rng)).toThrow(
+        ACTError
+      );
 
       // Amount too large (>= 2^L where L=8)
-      expect(() =>
-        issueResponse(params, issuerKeys.privateKey, request, 256n, ctx, rng)
-      ).toThrow(ACTError);
+      expect(() => issueResponse(params, issuerKeys.privateKey, request, 256n, ctx, rng)).toThrow(
+        ACTError
+      );
     });
 
     it('rejects tampered proof', () => {
@@ -242,14 +242,7 @@ describe('ACT VNEXT', () => {
 
       // Issue token
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
 
       // First spend
@@ -269,14 +262,7 @@ describe('ACT VNEXT', () => {
 
       // Issue token with 50 credits
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        50n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 50n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
 
       // Try to spend 100
@@ -289,14 +275,7 @@ describe('ACT VNEXT', () => {
 
       // Issue and spend
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
       const [spendProof, _] = proveSpend(params, token, 30n, rng);
 
@@ -304,9 +283,9 @@ describe('ACT VNEXT', () => {
       verifySpendProof(params, issuerKeys.privateKey, spendProof);
 
       // Try to refund more than spent
-      expect(() =>
-        issueRefund(params, issuerKeys.privateKey, spendProof, 50n, rng)
-      ).toThrow(ACTError);
+      expect(() => issueRefund(params, issuerKeys.privateKey, spendProof, 50n, rng)).toThrow(
+        ACTError
+      );
     });
   });
 
@@ -316,14 +295,7 @@ describe('ACT VNEXT', () => {
       const ctx = group.scalarFromBigint(0n);
 
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        0n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 0n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
 
       expect(token.c).toBe(0n);
@@ -335,14 +307,7 @@ describe('ACT VNEXT', () => {
 
       // Issue token
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
 
       // Spend 0
@@ -369,14 +334,7 @@ describe('ACT VNEXT', () => {
 
       // Issue token
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
 
       // Spend entire balance
@@ -403,14 +361,7 @@ describe('ACT VNEXT', () => {
       const maxValue = (1n << BigInt(params.L)) - 1n; // 255 for L=8
 
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        maxValue,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, maxValue, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
 
       expect(token.c).toBe(maxValue);
@@ -490,13 +441,7 @@ describe('ACT VNEXT', () => {
 
         // Get refund token for next iteration
         const refund = issueRefund(params, issuerKeys.privateKey, spendProof, 0n, rng);
-        token = constructRefundToken(
-          params,
-          issuerKeys.publicKey,
-          spendProof,
-          refund,
-          spendState
-        );
+        token = constructRefundToken(params, issuerKeys.publicKey, spendProof, refund, spendState);
         expect(token.c).toBe(initialCredits - i - 1n);
       }
 
@@ -515,14 +460,7 @@ describe('ACT VNEXT', () => {
       // Create 15 tokens and collect nullifiers (faster with L=4)
       for (let i = 0; i < 15; i++) {
         const [request, issueState] = issueRequest(paramsL4, ctx, rng);
-        const response = issueResponse(
-          paramsL4,
-          keysL4.privateKey,
-          request,
-          10n,
-          ctx,
-          rng
-        );
+        const response = issueResponse(paramsL4, keysL4.privateKey, request, 10n, ctx, rng);
         const token = verifyIssuance(paramsL4, keysL4.publicKey, response, issueState);
 
         // Spend and get nullifier
@@ -544,14 +482,7 @@ describe('ACT VNEXT', () => {
 
       // Issue and spend
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
       const [spendProof, spendState] = proveSpend(params, token, 30n, rng);
       const refund = issueRefund(params, issuerKeys.privateKey, spendProof, 0n, rng);
@@ -572,14 +503,7 @@ describe('ACT VNEXT', () => {
 
       // Issue and spend
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
       const [spendProof, spendState] = proveSpend(params, token, 30n, rng);
       const refund = issueRefund(params, issuerKeys.privateKey, spendProof, 0n, rng);
@@ -600,14 +524,7 @@ describe('ACT VNEXT', () => {
 
       // Issue and spend
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
       const [spendProof, spendState] = proveSpend(params, token, 30n, rng);
       const refund = issueRefund(params, issuerKeys.privateKey, spendProof, 0n, rng);
@@ -629,14 +546,7 @@ describe('ACT VNEXT', () => {
 
       // Create legitimate issuance
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
 
       // Tamper: set e to zero
       const zeroE = group.scalarFromBigint(0n);
@@ -654,14 +564,7 @@ describe('ACT VNEXT', () => {
 
       // Create legitimate issuance
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
 
       // Tamper: set A to identity
       const identity = group.identity();
@@ -679,14 +582,7 @@ describe('ACT VNEXT', () => {
 
       // Issue valid token
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
 
       // Create spend proof
@@ -696,9 +592,9 @@ describe('ACT VNEXT', () => {
       const tamperedProof = { ...spendProof, APrime: group.identity() };
 
       // Should reject - identity A_prime is invalid
-      expect(() =>
-        verifySpendProof(params, issuerKeys.privateKey, tamperedProof)
-      ).toThrow(ACTError);
+      expect(() => verifySpendProof(params, issuerKeys.privateKey, tamperedProof)).toThrow(
+        ACTError
+      );
     });
 
     it('rejects tampered spend proof (modified pok)', () => {
@@ -707,14 +603,7 @@ describe('ACT VNEXT', () => {
 
       // Issue valid token
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
 
       // Create spend proof
@@ -726,9 +615,9 @@ describe('ACT VNEXT', () => {
       const tamperedProof = { ...spendProof, pok: tamperedPok };
 
       // Should reject
-      expect(() =>
-        verifySpendProof(params, issuerKeys.privateKey, tamperedProof)
-      ).toThrow(ACTError);
+      expect(() => verifySpendProof(params, issuerKeys.privateKey, tamperedProof)).toThrow(
+        ACTError
+      );
     });
 
     it('rejects tampered spend amount', () => {
@@ -737,14 +626,7 @@ describe('ACT VNEXT', () => {
 
       // Issue valid token
       const [request, issueState] = issueRequest(params, ctx, rng);
-      const response = issueResponse(
-        params,
-        issuerKeys.privateKey,
-        request,
-        100n,
-        ctx,
-        rng
-      );
+      const response = issueResponse(params, issuerKeys.privateKey, request, 100n, ctx, rng);
       const token = verifyIssuance(params, issuerKeys.publicKey, response, issueState);
 
       // Create spend proof for 30
@@ -754,9 +636,9 @@ describe('ACT VNEXT', () => {
       const tamperedProof = { ...spendProof, s: 10n };
 
       // Should reject - commitment doesn't match claimed amount
-      expect(() =>
-        verifySpendProof(params, issuerKeys.privateKey, tamperedProof)
-      ).toThrow(ACTError);
+      expect(() => verifySpendProof(params, issuerKeys.privateKey, tamperedProof)).toThrow(
+        ACTError
+      );
     });
   });
 });

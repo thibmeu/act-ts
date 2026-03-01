@@ -78,9 +78,7 @@ describe('TLS Wire Format Encoding (VNEXT)', () => {
         pok: randomBytes(64),
       };
       const encoded = encodeIssuanceRequest(req);
-      expect(() => decodeIssuanceRequest(group, encoded.slice(0, 31))).toThrow(
-        EncodingError
-      );
+      expect(() => decodeIssuanceRequest(group, encoded.slice(0, 31))).toThrow(EncodingError);
     });
 
     it('rejects trailing data', () => {
@@ -138,9 +136,7 @@ describe('TLS Wire Format Encoding (VNEXT)', () => {
         ctx: group.randomScalar(),
         APrime: group.generator().multiply(group.randomScalar()),
         BBar: group.generator().multiply(group.randomScalar()),
-        Com: Array.from({ length: L }, () =>
-          group.generator().multiply(group.randomScalar())
-        ),
+        Com: Array.from({ length: L }, () => group.generator().multiply(group.randomScalar())),
         pok: randomBytes(256),
       };
       const encoded = encodeSpendProof(group, proof);
@@ -166,9 +162,7 @@ describe('TLS Wire Format Encoding (VNEXT)', () => {
         ctx: group.randomScalar(),
         APrime: group.generator().multiply(group.randomScalar()),
         BBar: group.generator().multiply(group.randomScalar()),
-        Com: Array.from({ length: L }, () =>
-          group.generator().multiply(group.randomScalar())
-        ),
+        Com: Array.from({ length: L }, () => group.generator().multiply(group.randomScalar())),
         pok: randomBytes(512),
       };
       const encoded = encodeSpendProof(group, proof);

@@ -116,10 +116,7 @@ export function generateParameters(
 ): SystemParams {
   // Validate L constraint
   if (L < 1 || L > 128) {
-    throw new ACTError(
-      `L must be in range [1, 128], got ${L}`,
-      ACTErrorCode.InvalidParameter
-    );
+    throw new ACTError(`L must be in range [1, 128], got ${L}`, ACTErrorCode.InvalidParameter);
   }
 
   const domainBytes =

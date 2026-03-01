@@ -74,7 +74,7 @@ describe('Debug Spend', () => {
   it('runs full spend proof flow L=4', () => {
     const group = ristretto255;
     const seed = new Uint8Array(32);
-    seed[0] = 0xAA;
+    seed[0] = 0xaa;
     const rng = new SeededPRNG(seed);
 
     const params = generateParameters(group, 'ACT-v1:test:debug:local:2026', 4);
@@ -100,7 +100,7 @@ describe('Debug Spend', () => {
   it.each([4, 5, 6, 7, 8])('runs full spend proof flow L=%i ctx=0', (L) => {
     const group = ristretto255;
     const seed = new Uint8Array(32);
-    seed[0] = 0xBB + L;
+    seed[0] = 0xbb + L;
     const rng = new SeededPRNG(seed);
 
     const maxValue = (1n << BigInt(L)) - 1n;
@@ -124,7 +124,7 @@ describe('Debug Spend', () => {
   it.each([4, 5, 6, 7, 8])('runs full spend proof flow L=%i ctx=0x5678', (L) => {
     const group = ristretto255;
     const seed = new Uint8Array(32);
-    seed[0] = 0xCC + L;
+    seed[0] = 0xcc + L;
     const rng = new SeededPRNG(seed);
 
     const maxValue = (1n << BigInt(L)) - 1n;

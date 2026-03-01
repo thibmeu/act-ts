@@ -44,7 +44,9 @@ export async function issuanceExample(): Promise<void> {
   // (request, state) = IssueRequest(params)
   const [request, clientState] = issueRequest(params);
   console.log('Step 1: Client creates issuance request');
-  console.log(`  K (commitment): ${Buffer.from(request.K.toBytes()).toString('hex').slice(0, 32)}...`);
+  console.log(
+    `  K (commitment): ${Buffer.from(request.K.toBytes()).toString('hex').slice(0, 32)}...`
+  );
   console.log();
 
   //
@@ -61,7 +63,9 @@ export async function issuanceExample(): Promise<void> {
   const response = issueResponse(params, sk, request, credits, ctx);
   console.log('Step 2: Issuer creates response');
   console.log(`  Credits issued: ${credits}`);
-  console.log(`  A (signature): ${Buffer.from(response.A.toBytes()).toString('hex').slice(0, 32)}...`);
+  console.log(
+    `  A (signature): ${Buffer.from(response.A.toBytes()).toString('hex').slice(0, 32)}...`
+  );
   console.log();
 
   //

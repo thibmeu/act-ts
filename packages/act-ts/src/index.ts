@@ -30,11 +30,7 @@ export { ACTError, ACTErrorCode } from './types.js';
 export { group, Ristretto255Scalar, Ristretto255Element } from './group.js';
 
 // System parameters
-export {
-  generateParameters,
-  validateDomainSeparator,
-  createDomainSeparator,
-} from './params.js';
+export { generateParameters, validateDomainSeparator, createDomainSeparator } from './params.js';
 
 // Key generation
 export {

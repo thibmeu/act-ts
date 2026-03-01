@@ -51,7 +51,9 @@ export async function spendingExample(): Promise<void> {
   const [proof, spendState] = proveSpend(params, token, spendAmount);
   console.log('Step 1: Client creates spend proof');
   console.log(`  Spending: ${spendAmount} credits`);
-  console.log(`  Nullifier revealed: ${Buffer.from(proof.k.toBytes()).toString('hex').slice(0, 32)}...`);
+  console.log(
+    `  Nullifier revealed: ${Buffer.from(proof.k.toBytes()).toString('hex').slice(0, 32)}...`
+  );
   console.log();
 
   //
@@ -87,7 +89,9 @@ export async function spendingExample(): Promise<void> {
   const newToken = constructRefundToken(params, pk, proof, refund, spendState);
   console.log('Step 3: Client constructs new token');
   console.log(`  New balance: ${newToken.c} credits`);
-  console.log(`  New nullifier: ${Buffer.from(newToken.k.toBytes()).toString('hex').slice(0, 32)}...`);
+  console.log(
+    `  New nullifier: ${Buffer.from(newToken.k.toBytes()).toString('hex').slice(0, 32)}...`
+  );
   console.log();
 
   console.log('Spending complete!');

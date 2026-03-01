@@ -31,9 +31,7 @@ import { SimpleTranscript, Transcript } from './transcript.js';
  * @param params - System parameters (H1-H4)
  * @returns Tuple of (request, state) where state must be kept secret
  */
-export function issueRequest(
-  params: SystemParams
-): [IssuanceRequest, IssuanceState] {
+export function issueRequest(params: SystemParams): [IssuanceRequest, IssuanceState] {
   // Step 1-2: Sample nullifier k and blinding factor r
   const k = group.randomScalar();
   const r = group.randomScalar();
@@ -117,10 +115,7 @@ export function issueResponse(
 
   // Step 7-8: Verify challenge
   if (!gamma.equals(gammaCheck)) {
-    throw new ACTError(
-      'Invalid issuance request proof',
-      ACTErrorCode.InvalidIssuanceRequestProof
-    );
+    throw new ACTError('Invalid issuance request proof', ACTErrorCode.InvalidIssuanceRequestProof);
   }
 
   // Steps 9-11: Create BBS signature
@@ -130,10 +125,7 @@ export function issueResponse(
   // A = (G + H1 * c + H4 * ctx + K) * (1/(e + sk.x))
   const G = group.generator();
   const cScalar = group.scalarFromBigint(c);
-  const X_A = group.msm(
-    [group.one(), cScalar, ctx, group.one()],
-    [G, params.H1, params.H4, K]
-  );
+  const X_A = group.msm([group.one(), cScalar, ctx, group.one()], [G, params.H1, params.H4, K]);
   const invDenom = e.add(sk.x).inv();
   const A = X_A.multiply(invDenom);
 
@@ -197,10 +189,7 @@ export function verifyIssuance(
 
   // Validate credit amount
   if (c >= 1n << BigInt(params.L)) {
-    throw new ACTError(
-      `Credit amount ${c} exceeds maximum`,
-      ACTErrorCode.AmountTooBig
-    );
+    throw new ACTError(`Credit amount ${c} exceeds maximum`, ACTErrorCode.AmountTooBig);
   }
 
   // Steps 5-6: Recompute X_A and X_G
@@ -208,10 +197,7 @@ export function verifyIssuance(
   const cScalar = group.scalarFromBigint(c);
 
   // X_A = G + H1 * c + H4 * ctx + K
-  const X_A = group.msm(
-    [group.one(), cScalar, ctx, group.one()],
-    [G, params.H1, params.H4, K]
-  );
+  const X_A = group.msm([group.one(), cScalar, ctx, group.one()], [G, params.H1, params.H4, K]);
 
   // X_G = G * e + pk.W
   const X_G = G.multiply(e).add(pk.W);
@@ -267,10 +253,7 @@ export interface IssuanceFlow {
   verifyResponse(response: IssuanceResponse, state: IssuanceState): CreditToken;
 }
 
-export function createIssuanceFlow(
-  params: SystemParams,
-  pk: PublicKey
-): IssuanceFlow {
+export function createIssuanceFlow(params: SystemParams, pk: PublicKey): IssuanceFlow {
   return {
     createRequest(): [IssuanceRequest, IssuanceState] {
       return issueRequest(params);

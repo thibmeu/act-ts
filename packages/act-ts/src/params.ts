@@ -62,10 +62,7 @@ function hashToRistretto255(seed: Uint8Array, counter: number): GroupElement {
   const counterBytes = numberToBytesLE(counter, 4);
 
   // Build hash input
-  const parts: Uint8Array[] = [
-    lengthPrefixed(seed),
-    lengthPrefixed(counterBytes),
-  ];
+  const parts: Uint8Array[] = [lengthPrefixed(seed), lengthPrefixed(counterBytes)];
 
   const totalLen = parts.reduce((sum, arr) => sum + arr.length, 0);
   const combined = new Uint8Array(totalLen);
@@ -94,16 +91,10 @@ function hashToRistretto255(seed: Uint8Array, counter: number): GroupElement {
  * @param L - Bit length for credit values (1 <= L <= 128)
  * @returns System parameters
  */
-export function generateParameters(
-  domainSeparator: string,
-  L: number = 64
-): SystemParams {
+export function generateParameters(domainSeparator: string, L: number = 64): SystemParams {
   // Validate L constraint (Section 3.1)
   if (L < 1 || L > 128) {
-    throw new ACTError(
-      `L must be in range [1, 128], got ${L}`,
-      ACTErrorCode.InvalidParameter
-    );
+    throw new ACTError(`L must be in range [1, 128], got ${L}`, ACTErrorCode.InvalidParameter);
   }
 
   // Step 1: seed = BLAKE3(LengthPrefixed(domain_separator))

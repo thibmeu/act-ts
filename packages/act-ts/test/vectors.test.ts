@@ -120,7 +120,7 @@ describe('ACT Test Vectors (Appendix A)', () => {
 
     it('validates test vector context is zero', () => {
       const ctxBytes = hexToBytes(ctx);
-      expect(ctxBytes.every(b => b === 0)).toBe(true);
+      expect(ctxBytes.every((b) => b === 0)).toBe(true);
     });
 
     it('decodes pre-issuance state from CBOR', () => {
@@ -238,7 +238,7 @@ describe('ACT Test Vectors (Appendix A)', () => {
       expect(charge.length).toBe(32);
       // Little-endian: 0x1e = 30
       expect(charge[0]).toBe(0x1e);
-      expect(charge.slice(1).every(b => b === 0)).toBe(true);
+      expect(charge.slice(1).every((b) => b === 0)).toBe(true);
     });
 
     it.todo('decodes spend proof from CBOR (vector truncated in JSON)');
@@ -299,7 +299,7 @@ describe('ACT Test Vectors (Appendix A)', () => {
       expect(credits.length).toBe(32);
       // Little-endian: 0x50 = 80
       expect(credits[0]).toBe(0x50);
-      expect(credits.slice(1).every(b => b === 0)).toBe(true);
+      expect(credits.slice(1).every((b) => b === 0)).toBe(true);
     });
 
     it('decodes refund token from CBOR', () => {

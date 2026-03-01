@@ -153,7 +153,7 @@ Results for L=64: proveSpend +12%, verifySpend +13%, full flow +39%.
 ### Evaluated but Not Implemented
 
 - **Batch LinearMap MSMs**: Standard Pippenger returns single sum, not per-equation results. Would require deep @noble/curves modifications.
-- **Precomputed tables for H1-H4**: Tested with `RistrettoPoint.precompute()`. Only ~5% speedup on scalar multiply, and ACT only does one H1.multiply per proof. Most H* usage is via MSM which doesn't benefit from per-point precompute.
+- **Precomputed tables for H1-H4**: Tested with `RistrettoPoint.precompute()`. Only ~5% speedup on scalar multiply, and ACT only does one H1.multiply per proof. Most H\* usage is via MSM which doesn't benefit from per-point precompute.
 
 ---
 

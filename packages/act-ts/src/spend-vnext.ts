@@ -7,12 +7,7 @@
  * Uses NISigmaProtocol from draft-irtf-cfrg-fiat-shamir for Fiat-Shamir transform.
  */
 
-import {
-  LinearRelation,
-  NISigmaProtocol,
-  appendDleq,
-  type Group,
-} from 'sigma-proofs';
+import { LinearRelation, NISigmaProtocol, appendDleq, type Group } from 'sigma-proofs';
 import type {
   SystemParams,
   PrivateKey,
@@ -91,15 +86,16 @@ function spendSessionId(params: SystemParams, k: Scalar, ctx: Scalar): Uint8Arra
  *
  * session_id = domain_separator + "refund" + Encode(e) + Encode(t) + Encode(ctx)
  */
-function refundSessionId(
-  params: SystemParams,
-  e: Scalar,
-  t: bigint,
-  ctx: Scalar
-): Uint8Array {
+function refundSessionId(params: SystemParams, e: Scalar, t: bigint, ctx: Scalar): Uint8Array {
   const label = new Uint8Array([114, 101, 102, 117, 110, 100]); // "refund"
   const tScalar = params.group.scalarFromBigint(t);
-  return concat(params.domainSeparator, label, encodeScalar(e), encodeScalar(tScalar), encodeScalar(ctx));
+  return concat(
+    params.domainSeparator,
+    label,
+    encodeScalar(e),
+    encodeScalar(tScalar),
+    encodeScalar(ctx)
+  );
 }
 
 /**
@@ -526,7 +522,7 @@ export function proveSpend(
   //   -e*A' + r2*BBar = -e*A*r1*r2 + r2*B*r1
   //                   = r1*r2*(-e*A) + r1*r2*B/r2 ... no
   //   Actually: -e*A*r1*r2 + r2*B*r1 = r1*r2*(-e*A + B/r2)... wrong
-  //   
+  //
   //   Let's be more careful:
   //   -e*A' + r2*BBar = -e*(A*r1*r2) + r2*(B*r1)
   //                   = -e*A*r1*r2 + B*r1*r2
@@ -585,8 +581,16 @@ export function proveSpend(
   const kStar2 = oneMinusB0.mul(kStar);
 
   // Build relation
-  const { relation, scalarVarCount } =
-    buildSpendRelation(params, APrime, BBar, ABar, Com, k, ctx, s);
+  const { relation, scalarVarCount } = buildSpendRelation(
+    params,
+    APrime,
+    BBar,
+    ABar,
+    Com,
+    k,
+    ctx,
+    s
+  );
 
   // Build witness
   // Order must match variable allocation: e, r2, r3, c, r, b[0..L-1], sCom[0..L-1], s2[0..L-1], kStar, kStar2
@@ -639,11 +643,7 @@ export function proveSpend(
  * @param proof - Spend proof from client
  * @throws ACTError if proof is invalid
  */
-export function verifySpendProof(
-  params: SystemParams,
-  sk: PrivateKey,
-  proof: SpendProof
-): void {
+export function verifySpendProof(params: SystemParams, sk: PrivateKey, proof: SpendProof): void {
   const { group, L } = params;
   const { k, s, ctx, APrime, BBar, Com, pok } = proof;
 
@@ -664,7 +664,16 @@ export function verifySpendProof(
   const ABar = APrime.multiply(sk.x);
 
   // Build relation (same as prover)
-  const { relation, scalarVarCount } = buildSpendRelation(params, APrime, BBar, ABar, Com, k, ctx, s);
+  const { relation, scalarVarCount } = buildSpendRelation(
+    params,
+    APrime,
+    BBar,
+    ABar,
+    Com,
+    k,
+    ctx,
+    s
+  );
 
   // Verify proof
   const sessionId = spendSessionId(params, k, ctx);
@@ -708,10 +717,7 @@ export function issueRefund(
     throw new ACTError(`Return amount ${t} >= 2^L`, ACTErrorCode.InvalidAmount);
   }
   if (t > s) {
-    throw new ACTError(
-      `Return amount ${t} > spend amount ${s}`,
-      ACTErrorCode.InvalidRefundAmount
-    );
+    throw new ACTError(`Return amount ${t} > spend amount ${s}`, ACTErrorCode.InvalidRefundAmount);
   }
 
   // Reconstruct K' = sum(2^j * Com[j]) using Horner's method

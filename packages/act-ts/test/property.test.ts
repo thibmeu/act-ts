@@ -21,7 +21,8 @@ const group = ristretto255;
 // --- Arbitraries ---
 
 /** Generate arbitrary non-zero 32-byte array for scalar */
-const arbScalarBytes = fc.uint8Array({ minLength: 32, maxLength: 32 })
+const arbScalarBytes = fc
+  .uint8Array({ minLength: 32, maxLength: 32 })
   .filter((arr) => arr.some((b) => b !== 0))
   .map((arr) => {
     // Ensure value is < group order by clearing high bits
@@ -109,59 +110,49 @@ describe('Property-Based Tests (VNEXT)', () => {
   describe('Decoding Error Handling', () => {
     it('rejects truncated PrivateKey', () => {
       fc.assert(
-        fc.property(
-          fc.integer({ min: 0, max: 31 }),
-          (len) => {
-            const data = new Uint8Array(len);
-            try {
-              decodePrivateKey(group, data);
-              return false; // Should have thrown
-            } catch (e) {
-              return e instanceof EncodingError;
-            }
+        fc.property(fc.integer({ min: 0, max: 31 }), (len) => {
+          const data = new Uint8Array(len);
+          try {
+            decodePrivateKey(group, data);
+            return false; // Should have thrown
+          } catch (e) {
+            return e instanceof EncodingError;
           }
-        ),
+        }),
         { numRuns: 32 }
       );
     });
 
     it('rejects truncated PublicKey', () => {
       fc.assert(
-        fc.property(
-          fc.integer({ min: 0, max: 31 }),
-          (len) => {
-            const data = new Uint8Array(len);
-            try {
-              decodePublicKey(group, data);
-              return false;
-            } catch (e) {
-              return e instanceof EncodingError;
-            }
+        fc.property(fc.integer({ min: 0, max: 31 }), (len) => {
+          const data = new Uint8Array(len);
+          try {
+            decodePublicKey(group, data);
+            return false;
+          } catch (e) {
+            return e instanceof EncodingError;
           }
-        ),
+        }),
         { numRuns: 32 }
       );
     });
 
     it('rejects PrivateKey with trailing data', () => {
       fc.assert(
-        fc.property(
-          arbScalarBytes,
-          fc.integer({ min: 1, max: 10 }),
-          (bytes, extra) => {
-            try {
-              const x = group.scalarFromBytes(bytes);
-              const sk: PrivateKey = { x };
-              const encoded = encodePrivateKey(sk);
-              const withTrailing = new Uint8Array(encoded.length + extra);
-              withTrailing.set(encoded);
-              decodePrivateKey(group, withTrailing);
-              return false;
-            } catch (e) {
-              return e instanceof EncodingError || e instanceof Error;
-            }
+        fc.property(arbScalarBytes, fc.integer({ min: 1, max: 10 }), (bytes, extra) => {
+          try {
+            const x = group.scalarFromBytes(bytes);
+            const sk: PrivateKey = { x };
+            const encoded = encodePrivateKey(sk);
+            const withTrailing = new Uint8Array(encoded.length + extra);
+            withTrailing.set(encoded);
+            decodePrivateKey(group, withTrailing);
+            return false;
+          } catch (e) {
+            return e instanceof EncodingError || e instanceof Error;
           }
-        ),
+        }),
         { numRuns: 50 }
       );
     });

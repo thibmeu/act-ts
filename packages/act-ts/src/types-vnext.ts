@@ -7,11 +7,7 @@
  * - draft-irtf-cfrg-fiat-shamir-01
  */
 
-import type {
-  Scalar as SigmaScalar,
-  GroupElement as SigmaGroupElement,
-  Group,
-} from 'sigma-proofs';
+import type { Scalar as SigmaScalar, GroupElement as SigmaGroupElement, Group } from 'sigma-proofs';
 
 // Re-export sigma-proofs types for convenience
 export type Scalar = SigmaScalar;

@@ -11,22 +11,22 @@ TypeScript implementation of Anonymous Credit Tokens (ACT) for privacy-preservin
 
 ## Table of Contents
 
-* [Packages](#packages)
-* [What is ACT?](#what-is-act)
-* [Installation](#installation)
-* [Quick Example](#quick-example)
-* [Development](#development)
-* [Security Considerations](#security-considerations)
-* [Related Projects](#related-projects)
-* [License](#license)
+- [Packages](#packages)
+- [What is ACT?](#what-is-act)
+- [Installation](#installation)
+- [Quick Example](#quick-example)
+- [Development](#development)
+- [Security Considerations](#security-considerations)
+- [Related Projects](#related-projects)
+- [License](#license)
 
 ## Packages
 
-| Package | Description | Spec |
-|---------|-------------|------|
-| [sigma-proofs](./packages/sigma-proofs) | Sigma protocols for zero-knowledge proofs | [draft-irtf-cfrg-sigma-protocols-01](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/) |
-| [act-ts](./packages/act-ts) | Anonymous Credit Tokens core protocol | [draft-schlesinger-cfrg-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/) |
-| [privacypass-act](./packages/privacypass-act) | Privacy Pass integration for ACT | [draft-schlesinger-privacypass-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-privacypass-act/) |
+| Package                                       | Description                               | Spec                                                                                                        |
+| --------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| [sigma-proofs](./packages/sigma-proofs)       | Sigma protocols for zero-knowledge proofs | [draft-irtf-cfrg-sigma-protocols-01](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/)     |
+| [act-ts](./packages/act-ts)                   | Anonymous Credit Tokens core protocol     | [draft-schlesinger-cfrg-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/)               |
+| [privacypass-act](./packages/privacypass-act) | Privacy Pass integration for ACT          | [draft-schlesinger-privacypass-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-privacypass-act/) |
 
 ## What is ACT?
 
@@ -55,17 +55,17 @@ npm install privacypass-act
 ## Quick Example
 
 ```typescript
-import { 
+import {
   ristretto255,
-  generateParameters, 
-  keyGen, 
-  issueRequest, 
-  issueResponse, 
-  verifyIssuance, 
-  proveSpend, 
-  verifyAndRefund, 
+  generateParameters,
+  keyGen,
+  issueRequest,
+  issueResponse,
+  verifyIssuance,
+  proveSpend,
+  verifyAndRefund,
   constructRefundToken,
-  SeededPRNG
+  SeededPRNG,
 } from 'act-ts';
 
 // Setup (vnext API)
@@ -91,13 +91,13 @@ const newToken = constructRefundToken(params, pk, proof, refund, spendState);
 
 ## Development
 
-| Task | Command |
-|------|---------|
-| Install | `npm install` |
-| Build | `npm run build` |
-| Test | `npm test` |
-| Lint | `npm run lint` |
-| Format | `npm run format` |
+| Task    | Command          |
+| ------- | ---------------- |
+| Install | `npm install`    |
+| Build   | `npm run build`  |
+| Test    | `npm test`       |
+| Lint    | `npm run lint`   |
+| Format  | `npm run format` |
 
 ### Project Structure
 
@@ -113,11 +113,11 @@ docs/
 
 ## Status
 
-| Package | Status | Tests |
-|---------|--------|-------|
-| sigma-proofs | Complete | 112 passing |
-| act-ts | vnext (sigma-draft-compliance) | 124 passing |
-| privacypass-act | Not started | - |
+| Package         | Status                         | Tests       |
+| --------------- | ------------------------------ | ----------- |
+| sigma-proofs    | Complete                       | 112 passing |
+| act-ts          | vnext (sigma-draft-compliance) | 124 passing |
+| privacypass-act | Not started                    | -           |
 
 ### Roadmap
 
@@ -134,16 +134,16 @@ docs/
 
 This software has not been audited. Please use at your sole discretion. With this in mind, act-ts security relies on the following:
 
-* [Anonymous Credit Tokens](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/) specification by Samuel Schlesinger and Jonathan Katz, based on keyed-verification anonymous credentials and BBS-style signatures
-* [Sigma Protocols](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/) specification for zero-knowledge proofs
-* [@noble/curves](https://github.com/paulmillr/noble-curves) for elliptic curve operations (Ristretto255, P-256)
-* [@noble/hashes](https://github.com/paulmillr/noble-hashes) for cryptographic hash functions
+- [Anonymous Credit Tokens](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/) specification by Samuel Schlesinger and Jonathan Katz, based on keyed-verification anonymous credentials and BBS-style signatures
+- [Sigma Protocols](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/) specification for zero-knowledge proofs
+- [@noble/curves](https://github.com/paulmillr/noble-curves) for elliptic curve operations (Ristretto255, P-256)
+- [@noble/hashes](https://github.com/paulmillr/noble-hashes) for cryptographic hash functions
 
 ### Limitations
 
-* **Not quantum-resistant**: Based on discrete logarithm assumptions
-* **Draft specifications**: Protocol may change before standardization
-* **No constant-time guarantees**: JavaScript runtime limitations (see [@noble/curves documentation](https://github.com/paulmillr/noble-curves#security))
+- **Not quantum-resistant**: Based on discrete logarithm assumptions
+- **Draft specifications**: Protocol may change before standardization
+- **No constant-time guarantees**: JavaScript runtime limitations (see [@noble/curves documentation](https://github.com/paulmillr/noble-curves#security))
 
 ### Reporting Vulnerabilities
 
@@ -151,9 +151,9 @@ If you discover a security vulnerability, please report it via GitHub Security A
 
 ## Related Projects
 
-* [anonymous-credit-tokens](https://github.com/AquilaCrypto/anonymous-credit-tokens) - Rust reference implementation
-* [privacypass-ts](https://github.com/cloudflare/privacypass-ts) - Privacy Pass TypeScript library
-* [Privacy Pass](https://www.rfc-editor.org/rfc/rfc9576.html) - RFC 9576 architecture
+- [anonymous-credit-tokens](https://github.com/AquilaCrypto/anonymous-credit-tokens) - Rust reference implementation
+- [privacypass-ts](https://github.com/cloudflare/privacypass-ts) - Privacy Pass TypeScript library
+- [Privacy Pass](https://www.rfc-editor.org/rfc/rfc9576.html) - RFC 9576 architecture
 
 ## License
 

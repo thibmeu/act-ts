@@ -5,6 +5,7 @@ Anonymous Credit Tokens (ACT) core protocol in TypeScript.
 **Specification:** [draft-schlesinger-cfrg-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/)
 
 **Features:**
+
 - Token issuance with BBS-style signatures
 - Partial spending with range proofs
 - Double-spend prevention via nullifiers
@@ -132,11 +133,13 @@ Client                                    Issuer
 ## Ciphersuite
 
 **ACT(ristretto255, BLAKE3)** - Current implementation
+
 - Group: Ristretto255 (RFC 9496)
 - Hash: BLAKE3 for Fiat-Shamir
 - Encoding: CBOR
 
 **ACT(ristretto255, SHAKE128)** - Upcoming (sigma-draft-compliance)
+
 - Uses sigma-proofs package for proofs
 - TLS presentation language encoding
 
