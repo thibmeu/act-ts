@@ -90,6 +90,10 @@ class P256Element implements GroupElement {
     return new P256Element(this.point.add(other.point));
   }
 
+  negate(): GroupElement {
+    return new P256Element(this.point.negate());
+  }
+
   multiply(scalar: Scalar): GroupElement {
     if (!(scalar instanceof P256Scalar)) {
       throw new TypeError('Cannot mix scalar/element from different groups');

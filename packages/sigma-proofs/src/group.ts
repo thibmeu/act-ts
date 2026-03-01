@@ -33,6 +33,8 @@ export interface Scalar {
 export interface GroupElement {
   /** Add another group element */
   add(other: GroupElement): GroupElement;
+  /** Negate this element (additive inverse) */
+  negate(): GroupElement;
   /** Scalar multiplication */
   multiply(scalar: Scalar): GroupElement;
   /** Check equality */
