@@ -1,5 +1,5 @@
 {
-  "name": "act",
+  "name": "act-ts",
   "version": "0.0.1",
   "description": "Anonymous Credit Tokens (draft-schlesinger-cfrg-act)",
   "type": "module",
@@ -9,15 +9,33 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./vnext": {
+      "import": "./dist/index-vnext.js",
+      "types": "./dist/index-vnext.d.ts"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "tsup",
     "test": "vitest",
+    "bench": "vitest bench",
     "examples": "tsx examples/index.ts"
+  },
+  "keywords": [
+    "anonymous",
+    "credit",
+    "tokens",
+    "cryptography",
+    "privacy",
+    "ietf"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cloudflare/act-ts.git",
+    "directory": "packages/act"
   },
   "license": "Apache-2.0",
   "dependencies": {

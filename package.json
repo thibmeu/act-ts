@@ -7,12 +7,16 @@
     "build": "npm run build --workspaces --if-present",
     "format": "prettier --write . && eslint packages/**/*.ts --ignore-pattern **/dist/** --fix",
     "lint": "prettier --check . && eslint packages/**/*.ts --ignore-pattern **/dist/**",
-    "test": "npm run test --workspaces --if-present -- --run"
+    "test": "npm run test --workspaces --if-present -- --run",
+    "test:coverage": "vitest run --coverage",
+    "bench": "npm run bench --workspaces --if-present"
   },
   "license": "Apache-2.0",
   "version": "0.0.0",
   "devDependencies": {
     "@eslint/js": "9.28.0",
+    "@types/node": "^25.3.3",
+    "@vitest/coverage-v8": "3.2.3",
     "eslint": "9.28.0",
     "eslint-plugin-security": "3.0.1",
     "prettier": "3.5.3",

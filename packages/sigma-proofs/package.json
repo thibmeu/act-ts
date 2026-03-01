@@ -1,7 +1,7 @@
 {
   "name": "sigma-proofs",
   "version": "0.0.1",
-  "description": "Interactive Sigma Proofs (draft-irtf-cfrg-sigma-protocols)",
+  "description": "Sigma Protocols for Zero-Knowledge Proofs (draft-irtf-cfrg-sigma-protocols)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,6 +15,20 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
     "test": "vitest"
+  },
+  "keywords": [
+    "sigma",
+    "protocols",
+    "zero-knowledge",
+    "proofs",
+    "cryptography",
+    "schnorr",
+    "ietf"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cloudflare/act-ts.git",
+    "directory": "packages/sigma-proofs"
   },
   "license": "Apache-2.0",
   "dependencies": {
