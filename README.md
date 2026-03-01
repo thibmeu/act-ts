@@ -22,11 +22,10 @@ TypeScript implementation of Anonymous Credit Tokens (ACT) for privacy-preservin
 
 ## Packages
 
-| Package                                       | Description                               | Spec                                                                                                        |
-| --------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| [sigma-proofs](./packages/sigma-proofs)       | Sigma protocols for zero-knowledge proofs | [draft-irtf-cfrg-sigma-protocols-01](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/)     |
-| [act-ts](./packages/act-ts)                   | Anonymous Credit Tokens core protocol     | [draft-schlesinger-cfrg-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/)               |
-| [privacypass-act](./packages/privacypass-act) | Privacy Pass integration for ACT          | [draft-schlesinger-privacypass-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-privacypass-act/) |
+| Package                                 | Description                               | Spec                                                                                                    |
+| --------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [sigma-proofs](./packages/sigma-proofs) | Sigma protocols for zero-knowledge proofs | [draft-irtf-cfrg-sigma-protocols-01](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/) |
+| [act-ts](./packages/act-ts)             | Anonymous Credit Tokens core protocol     | [draft-schlesinger-cfrg-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/)           |
 
 ## What is ACT?
 
@@ -49,7 +48,6 @@ Anonymous Credit Tokens enable privacy-preserving credit systems where:
 # Install individual packages
 npm install sigma-proofs
 npm install act-ts
-npm install privacypass-act
 ```
 
 ## Quick Example
@@ -105,7 +103,6 @@ const newToken = constructRefundToken(params, pk, proof, refund, spendState);
 packages/
   sigma-proofs/     # Zero-knowledge proof primitives
   act-ts/           # Core ACT protocol
-  privacypass-act/  # Privacy Pass integration
 docs/
   ARCHITECTURE.md   # Technical design
   VNEXT_MIGRATION.md # Upcoming spec changes
@@ -113,11 +110,10 @@ docs/
 
 ## Status
 
-| Package         | Status                         | Tests       |
-| --------------- | ------------------------------ | ----------- |
-| sigma-proofs    | Complete                       | 112 passing |
-| act-ts          | vnext (sigma-draft-compliance) | 124 passing |
-| privacypass-act | Not started                    | -           |
+| Package      | Status                         | Tests       |
+| ------------ | ------------------------------ | ----------- |
+| sigma-proofs | Complete                       | 112 passing |
+| act-ts       | vnext (sigma-draft-compliance) | 124 passing |
 
 ### Roadmap
 
@@ -128,7 +124,6 @@ docs/
 - [x] act-ts: TLS wire format encoding (replacing CBOR)
 - [x] act-ts: Horner optimization for pow2-weighted sums
 - [ ] act-ts: Interop testing with Rust reference implementation
-- [ ] privacypass-act: Token challenge/response integration
 
 ## Security Considerations
 

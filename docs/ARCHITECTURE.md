@@ -10,10 +10,9 @@ Technical design of act-ts packages.
 packages/
   sigma-proofs/       # draft-irtf-cfrg-sigma-protocols-01
   act-ts/             # draft-schlesinger-cfrg-act-01
-  privacypass-act/    # draft-schlesinger-privacypass-act-01
 ```
 
-Dependency graph: `privacypass-act` → `act-ts` → `sigma-proofs`
+Dependency graph: `act-ts` → `sigma-proofs`
 
 ---
 
@@ -100,23 +99,6 @@ ACT uses sigma proofs for:
 2. **Issuance Response**: BBS+ signature computed correctly
 3. **Spend Proof**: Range proof via binary decomposition
 4. **Refund Proof**: New token derived correctly from old
-
----
-
-## PrivacyPass-ACT
-
-HTTP binding per draft-schlesinger-privacypass-act-01.
-
-### Token Types
-
-Extends PrivacyPass with ACT-specific token types:
-
-- Token type 0x0004: ACT issuance
-- Token type 0x0005: ACT redemption
-
-### CBOR Serialization
-
-All wire formats use CBOR (RFC 8949) per spec.
 
 ---
 

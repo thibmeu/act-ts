@@ -27,7 +27,6 @@ packages/
   act-ts/             # ACT core (124 tests) - vnext active
     src/*-vnext.ts    # New API (use these)
     src/*.ts          # Old API (deprecated)
-  privacypass-act/    # NOT STARTED
 docs/
   ARCHITECTURE.md     # Technical design
   VNEXT_MIGRATION.md  # Migration notes
@@ -38,11 +37,10 @@ docs/
 
 ## Specifications
 
-| Package         | Spec                                                                                                               | Notes                             |
-| --------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
-| sigma-proofs    | [draft-irtf-cfrg-sigma-protocols-01](https://www.ietf.org/archive/id/draft-irtf-cfrg-sigma-protocols-01.txt)       | Complete                          |
-| act-ts          | [draft-schlesinger-cfrg-act-01](https://www.ietf.org/archive/id/draft-schlesinger-cfrg-act-01.txt)                 | vnext uses algebraic range proofs |
-| privacypass-act | [draft-schlesinger-privacypass-act-01](https://datatracker.ietf.org/doc/html/draft-schlesinger-privacypass-act-01) | Blocked                           |
+| Package      | Spec                                                                                                         | Notes                             |
+| ------------ | ------------------------------------------------------------------------------------------------------------ | --------------------------------- |
+| sigma-proofs | [draft-irtf-cfrg-sigma-protocols-01](https://www.ietf.org/archive/id/draft-irtf-cfrg-sigma-protocols-01.txt) | Complete                          |
+| act-ts       | [draft-schlesinger-cfrg-act-01](https://www.ietf.org/archive/id/draft-schlesinger-cfrg-act-01.txt)           | vnext uses algebraic range proofs |
 
 ---
 
@@ -108,11 +106,10 @@ docs/
 
 ## Current Status
 
-| Package         | Status       | Tests           |
-| --------------- | ------------ | --------------- |
-| sigma-proofs    | Complete     | 112             |
-| act-ts          | vnext active | 124             |
-| privacypass-act | Not started  | 1 (placeholder) |
+| Package      | Status       | Tests |
+| ------------ | ------------ | ----- |
+| sigma-proofs | Complete     | 112   |
+| act-ts       | vnext active | 124   |
 
 ### What's Done (vnext)
 
@@ -129,7 +126,6 @@ docs/
 
 ### Blocked
 
-- privacypass-act: Needs act-ts vnext completion
 - Interop testing: Needs Rust reference alignment
 
 ---

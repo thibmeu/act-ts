@@ -29,8 +29,7 @@
   },
   "workspaces": [
     "packages/sigma-proofs",
-    "packages/act-ts",
-    "packages/privacypass-act"
+    "packages/act-ts"
   ],
   "packageManager": "npm@11.3.0"
 }
