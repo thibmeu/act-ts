@@ -43,9 +43,16 @@ export class LinearRelation {
   readonly linearMap: LinearMap;
   /** Indices into groupElements for each equation's LHS */
   readonly imageIndices: number[] = [];
+  /** Cached instance label (computed lazily, invalidated on structure changes) */
+  private _cachedInstanceLabel: Uint8Array | undefined;
 
   constructor(group: Group) {
     this.linearMap = new LinearMap(group);
+  }
+
+  /** Invalidate cached instance label when structure changes */
+  private _invalidateCache(): void {
+    this._cachedInstanceLabel = undefined;
   }
 
   /**
@@ -136,6 +143,7 @@ export class LinearRelation {
    * @param rhs - Array of [scalarIndex, elementIndex] pairs
    */
   appendEquation(lhs: number, rhs: Array<[number, number]>): void {
+    this._invalidateCache();
     const lc: LinearCombination = {
       scalarIndices: rhs.map(([s, _]) => s),
       elementIndices: rhs.map(([_, e]) => e),
@@ -156,6 +164,7 @@ export class LinearRelation {
    * @param elements - Array of [index, element] pairs
    */
   setElements(elements: Array<[number, GroupElement]>): void {
+    this._invalidateCache();
     for (const [index, element] of elements) {
       if (index < 0 || index >= this.linearMap.groupElements.length) {
         throw new Error(
@@ -181,13 +190,20 @@ export class LinearRelation {
    *   [num_terms: u32 LE]
    *   per term:
    *     [scalar_index: u32 LE]
-   *     [group_index: u32 LE]
+   *     [element_index: u32 LE]
    * [all canonical group elements concatenated]
    * ```
+   *
+   * Results are cached; cache is invalidated when the relation structure changes.
    *
    * @returns The canonical instance label as bytes
    */
   getInstanceLabel(): Uint8Array {
+    // Return cached result if available
+    if (this._cachedInstanceLabel !== undefined) {
+      return this._cachedInstanceLabel;
+    }
+
     const lm = this.linearMap;
     const orig = lm.groupElements;
 
@@ -264,6 +280,8 @@ export class LinearRelation {
       parts.push(elem.toBytes());
     }
 
-    return concat(...parts);
+    // Cache and return
+    this._cachedInstanceLabel = concat(...parts);
+    return this._cachedInstanceLabel;
   }
 }

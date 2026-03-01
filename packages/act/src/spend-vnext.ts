@@ -377,9 +377,17 @@ function buildSpendRelation(
   ];
 
   // Add the sCom[j]*(H3*2^j) terms
+  // Use doubling chain instead of scalar multiplication: H3*2^j = 2*(H3*2^(j-1))
+  const h3Powers: GroupElement[] = [H3]; // h3Powers[0] = H3 = H3*2^0
+  for (let j = 1; j < L; j++) {
+    const prev = h3Powers[j - 1];
+    if (!prev) throw new Error(`Missing h3Powers at index ${j - 1}`);
+    h3Powers.push(prev.add(prev)); // H3*2^j = 2 * H3*2^(j-1)
+  }
+
   for (let j = 0; j < L; j++) {
-    const pow2j = 1n << BigInt(j);
-    const h3Times2j = H3.multiply(group.scalarFromBigint(pow2j));
+    const h3Times2j = h3Powers[j];
+    if (!h3Times2j) throw new Error(`Missing h3Powers at index ${j}`);
     const h3CoeffIdx = relation.allocateElements(1)[0]!;
     relation.setElements([[h3CoeffIdx, h3Times2j]]);
     coefficients.push([sComVars[j]!, h3CoeffIdx]);
@@ -510,26 +518,27 @@ export function proveSpend(
   // Generate new nullifier k* and blinding factors for each bit commitment
   const kStar = randomNonZeroScalar(group, rng);
 
-  const sCom: Scalar[] = [];
-  const s2: Scalar[] = [];
-  const Com: GroupElement[] = [];
+  // Pre-size arrays to avoid reallocations
+  const sCom: Scalar[] = new Array<Scalar>(L);
+  const s2: Scalar[] = new Array<Scalar>(L);
+  const Com: GroupElement[] = new Array<GroupElement>(L);
 
   for (let j = 0; j < L; j++) {
     const sj = randomNonZeroScalar(group, rng);
-    sCom.push(sj);
+    sCom[j] = sj;
 
     const bj = group.scalarFromBigint(bits[j]!);
 
     // Com[j] = b[j]*H1 + s[j]*H3 (+ kstar*H2 for j=0)
     if (j === 0) {
-      Com.push(group.msm([bj, kStar, sj], [H1, H2, H3]));
+      Com[j] = group.msm([bj, kStar, sj], [H1, H2, H3]);
     } else {
-      Com.push(group.msm([bj, sj], [H1, H3]));
+      Com[j] = group.msm([bj, sj], [H1, H3]);
     }
 
     // s2[j] = (1 - b[j]) * s[j]
     const oneMinusBj = one.sub(bj);
-    s2.push(oneMinusBj.mul(sj));
+    s2[j] = oneMinusBj.mul(sj);
   }
 
   // Compute r* = sum(2^j * s[j]) using Horner's method
