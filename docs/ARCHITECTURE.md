@@ -138,6 +138,25 @@ This implementation is for **demonstration and interoperability testing**, not h
 
 ---
 
+## Performance
+
+### Implemented Optimizations (T1+T2)
+
+- **T1.1**: Memoized `getInstanceLabel()` in LinearRelation
+- **T1.2**: H3 power doubling chain (L-1 doublings vs L scalar muls)
+- **T1.3**: Pre-sized arrays in `proveSpend`
+- **T2.1**: Cached one/zero scalars per group via WeakMap
+- **T2.2**: Pre-convert bit arrays to scalar arrays
+
+Results for L=64: proveSpend +12%, verifySpend +13%, full flow +39%.
+
+### Evaluated but Not Implemented
+
+- **Batch LinearMap MSMs**: Standard Pippenger returns single sum, not per-equation results. Would require deep @noble/curves modifications.
+- **Precomputed tables for H1-H4**: Tested with `RistrettoPoint.precompute()`. Only ~5% speedup on scalar multiply, and ACT only does one H1.multiply per proof. Most H* usage is via MSM which doesn't benefit from per-point precompute.
+
+---
+
 ## Dependencies
 
 | Package         | Purpose                                      |
