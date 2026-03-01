@@ -101,6 +101,79 @@ function randomNonZeroScalar(group: Group, rng: PRNG): Scalar {
 }
 
 /**
+ * Compute sum(2^j * P[j]) for j=0..n-1 using Horner's method.
+ *
+ * Horner's method: P[0] + 2*(P[1] + 2*(P[2] + ... + 2*P[n-1]))
+ * This converts n-point MSM to (n-1) doublings + (n-1) additions.
+ *
+ * Performance: For L=64, naive approach does 64 scalar muls + 64 adds.
+ * Horner does 63 doublings + 63 adds. Since doubling ≈ 0.5x cost of
+ * scalar mul, this is ~2x faster.
+ *
+ * @param points - Array of group elements [P[0], P[1], ..., P[n-1]]
+ * @returns sum(2^j * P[j]) for j=0..n-1
+ */
+function pow2WeightedSum(points: readonly GroupElement[]): GroupElement {
+  if (points.length === 0) {
+    throw new Error('pow2WeightedSum requires at least one point');
+  }
+  if (points.length === 1) {
+    const p0 = points[0];
+    if (!p0) throw new Error('Missing point at index 0');
+    return p0;
+  }
+
+  // Start from the last element
+  const lastIdx = points.length - 1;
+  const lastPoint = points[lastIdx];
+  if (!lastPoint) throw new Error(`Missing point at index ${lastIdx}`);
+  let result = lastPoint;
+
+  // Work backwards: result = P[j] + 2*result
+  for (let j = points.length - 2; j >= 0; j--) {
+    const pj = points[j];
+    if (!pj) throw new Error(`Missing point at index ${j}`);
+    result = pj.add(result.add(result)); // P[j] + 2*result
+  }
+
+  return result;
+}
+
+/**
+ * Compute sum(2^j * s[j]) for j=0..n-1 using Horner's method.
+ *
+ * Horner's method: s[0] + 2*(s[1] + 2*(s[2] + ... + 2*s[n-1]))
+ *
+ * @param scalars - Array of scalars [s[0], s[1], ..., s[n-1]]
+ * @returns sum(2^j * s[j]) for j=0..n-1
+ */
+function pow2WeightedScalarSum(scalars: readonly Scalar[]): Scalar {
+  if (scalars.length === 0) {
+    throw new Error('pow2WeightedScalarSum requires at least one scalar');
+  }
+  if (scalars.length === 1) {
+    const s0 = scalars[0];
+    if (!s0) throw new Error('Missing scalar at index 0');
+    return s0;
+  }
+
+  // Start from the last element
+  const lastIdx = scalars.length - 1;
+  const lastScalar = scalars[lastIdx];
+  if (!lastScalar) throw new Error(`Missing scalar at index ${lastIdx}`);
+  let result = lastScalar;
+
+  // Work backwards: result = s[j] + 2*result
+  for (let j = scalars.length - 2; j >= 0; j--) {
+    const sj = scalars[j];
+    if (!sj) throw new Error(`Missing scalar at index ${j}`);
+    result = sj.add(result.add(result)); // s[j] + 2*result
+  }
+
+  return result;
+}
+
+/**
  * Build the common spend proof relation structure.
  *
  * This builds the relation for both prover and verifier to ensure they match.
@@ -138,14 +211,8 @@ function buildSpendRelation(
   // We compute it here for both prover and verifier
   const sScalar = group.scalarFromBigint(s);
 
-  // K' = sum(Com[j] * 2^j)
-  let KPrime = group.identity();
-  for (let j = 0; j < L; j++) {
-    const pow2j = group.scalarFromBigint(1n << BigInt(j));
-    const comJ = Com[j];
-    if (!comJ) throw new Error(`Missing commitment at index ${j}`);
-    KPrime = KPrime.add(comJ.multiply(pow2j));
-  }
+  // K' = sum(2^j * Com[j]) using Horner's method
+  const KPrime = pow2WeightedSum(Com);
 
   // ComTotal = s*H1 + K'
   // Handle s=0 case (multiply by zero scalar not allowed)
@@ -465,12 +532,8 @@ export function proveSpend(
     s2.push(oneMinusBj.mul(sj));
   }
 
-  // Compute r* = sum(s[j] * 2^j)
-  let rStar = group.scalarFromBigint(0n);
-  for (let j = 0; j < L; j++) {
-    const pow2j = group.scalarFromBigint(1n << BigInt(j));
-    rStar = rStar.add(sCom[j]!.mul(pow2j));
-  }
+  // Compute r* = sum(2^j * s[j]) using Horner's method
+  const rStar = pow2WeightedScalarSum(sCom);
 
   // Compute kStar2 = (1 - b[0]) * kStar
   // This is needed for the binary constraint on Com[0]
@@ -608,12 +671,8 @@ export function issueRefund(
     );
   }
 
-  // Reconstruct K' = sum(Com[j] * 2^j)
-  let KPrime = group.identity();
-  for (let j = 0; j < L; j++) {
-    const pow2j = group.scalarFromBigint(1n << BigInt(j));
-    KPrime = KPrime.add(Com[j]!.multiply(pow2j));
-  }
+  // Reconstruct K' = sum(2^j * Com[j]) using Horner's method
+  const KPrime = pow2WeightedSum(Com);
 
   const G = group.generator();
   const one = group.scalarFromBigint(1n);
@@ -681,12 +740,8 @@ export function constructRefundToken(
   const { kStar, rStar, m, ctx } = state;
   const { Com } = proof;
 
-  // Reconstruct K' = sum(Com[j] * 2^j)
-  let KPrime = group.identity();
-  for (let j = 0; j < L; j++) {
-    const pow2j = group.scalarFromBigint(1n << BigInt(j));
-    KPrime = KPrime.add(Com[j]!.multiply(pow2j));
-  }
+  // Reconstruct K' = sum(2^j * Com[j]) using Horner's method
+  const KPrime = pow2WeightedSum(Com);
 
   const G = group.generator();
   const one = group.scalarFromBigint(1n);
