@@ -16,7 +16,8 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
-    "test": "vitest"
+    "test": "vitest",
+    "examples": "tsx examples/index.ts"
   },
   "license": "Apache-2.0",
   "dependencies": {
@@ -26,6 +27,7 @@
     "sigma-proofs": "*"
   },
   "devDependencies": {
+    "tsx": "^4.19.0",
     "vitest": "^3.2.3"
   }
 }
