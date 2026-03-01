@@ -1,6 +1,0 @@
-# Default owners for everything
-* @cloudflare/research
-
-# Cryptographic implementation requires extra review
-packages/sigma-proofs/ @cloudflare/research
-packages/act/ @cloudflare/research

@@ -142,7 +142,9 @@ function buildSpendRelation(
   let KPrime = group.identity();
   for (let j = 0; j < L; j++) {
     const pow2j = group.scalarFromBigint(1n << BigInt(j));
-    KPrime = KPrime.add(Com[j].multiply(pow2j));
+    const comJ = Com[j];
+    if (!comJ) throw new Error(`Missing commitment at index ${j}`);
+    KPrime = KPrime.add(comJ.multiply(pow2j));
   }
 
   // ComTotal = s*H1 + K'
@@ -495,10 +497,10 @@ export function proveSpend(
     kStar2,
   ];
 
-  // Generate NI proof
+  // Generate NI proof (NISigmaProtocol uses internal randomness)
   const sessionId = spendSessionId(params, k, ctx);
   const prover = new NISigmaProtocol(relation, { sessionId });
-  const proof = prover.prove(witness, rng);
+  const proof = prover.prove(witness);
   const pok = serializeProof(proof, group.scalarSize);
 
   const spendProof: SpendProof = {
@@ -632,8 +634,13 @@ export function issueRefund(
 
   // Build DLEQ proof
   const relation = new LinearRelation(group);
-  const [dVar] = relation.allocateScalars(1);
-  const [gIdx, aStarIdx, xaStarIdx, xgIdx] = relation.allocateElements(4);
+  const refundScalars = relation.allocateScalars(1);
+  const dVar = refundScalars[0]!;
+  const refundElems = relation.allocateElements(4);
+  const gIdx = refundElems[0]!;
+  const aStarIdx = refundElems[1]!;
+  const xaStarIdx = refundElems[2]!;
+  const xgIdx = refundElems[3]!;
   relation.setElements([
     [gIdx, G],
     [aStarIdx, AStar],
@@ -644,7 +651,7 @@ export function issueRefund(
 
   const sessionId = refundSessionId(params, eStar, t, ctx);
   const prover = new NISigmaProtocol(relation, { sessionId });
-  const refundProof = prover.prove([skPlusEStar], rng);
+  const refundProof = prover.prove([skPlusEStar]);
   const pok = serializeProof(refundProof, group.scalarSize);
 
   return { AStar, eStar, t, pok };
@@ -693,8 +700,13 @@ export function constructRefundToken(
 
   // Verify DLEQ proof
   const relation = new LinearRelation(group);
-  const [dVar] = relation.allocateScalars(1);
-  const [gIdx, aStarIdx, xaStarIdx, xgIdx] = relation.allocateElements(4);
+  const verifyScalars = relation.allocateScalars(1);
+  const dVar = verifyScalars[0]!;
+  const verifyElems = relation.allocateElements(4);
+  const gIdx = verifyElems[0]!;
+  const aStarIdx = verifyElems[1]!;
+  const xaStarIdx = verifyElems[2]!;
+  const xgIdx = verifyElems[3]!;
   relation.setElements([
     [gIdx, G],
     [aStarIdx, AStar],

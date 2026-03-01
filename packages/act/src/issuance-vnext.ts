@@ -104,8 +104,13 @@ export function issueRequest(
 
   // Build proof statement: K = k*H2 + r*H3
   const relation = new LinearRelation(group);
-  const [kVar, rVar] = relation.allocateScalars(2);
-  const [h2Idx, h3Idx, kIdx] = relation.allocateElements(3);
+  const scalarVars = relation.allocateScalars(2);
+  const kVar = scalarVars[0]!;
+  const rVar = scalarVars[1]!;
+  const elemVars = relation.allocateElements(3);
+  const h2Idx = elemVars[0]!;
+  const h3Idx = elemVars[1]!;
+  const kIdx = elemVars[2]!;
   relation.setElements([
     [h2Idx, H2],
     [h3Idx, H3],
@@ -113,10 +118,10 @@ export function issueRequest(
   ]);
   appendPedersen(relation, h2Idx, h3Idx, kIdx, kVar, rVar);
 
-  // Generate NI proof
+  // Generate NI proof (NISigmaProtocol uses internal randomness)
   const sessionId = requestSessionId(params);
   const prover = new NISigmaProtocol(relation, { sessionId });
-  const proof = prover.prove([k, r], rng);
+  const proof = prover.prove([k, r]);
 
   // Serialize proof
   const pok = serializeProof(proof, group.scalarSize);
@@ -169,8 +174,13 @@ export function issueResponse(
   const { K, pok } = request;
 
   const verifyRelation = new LinearRelation(group);
-  const [kVarV, rVarV] = verifyRelation.allocateScalars(2);
-  const [h2IdxV, h3IdxV, kIdxV] = verifyRelation.allocateElements(3);
+  const verifyScalars = verifyRelation.allocateScalars(2);
+  const kVarV = verifyScalars[0]!;
+  const rVarV = verifyScalars[1]!;
+  const verifyElems = verifyRelation.allocateElements(3);
+  const h2IdxV = verifyElems[0]!;
+  const h3IdxV = verifyElems[1]!;
+  const kIdxV = verifyElems[2]!;
   verifyRelation.setElements([
     [h2IdxV, H2],
     [h3IdxV, H3],
@@ -207,8 +217,13 @@ export function issueResponse(
 
   // Build DLEQ proof: PoK{(d): X_A = d*A AND X_G = d*G} where d = sk+e
   const respRelation = new LinearRelation(group);
-  const [dVar] = respRelation.allocateScalars(1);
-  const [gIdx, aIdx, xaIdx, xgIdx] = respRelation.allocateElements(4);
+  const respScalars = respRelation.allocateScalars(1);
+  const dVar = respScalars[0]!;
+  const respElems = respRelation.allocateElements(4);
+  const gIdx = respElems[0]!;
+  const aIdx = respElems[1]!;
+  const xaIdx = respElems[2]!;
+  const xgIdx = respElems[3]!;
   respRelation.setElements([
     [gIdx, G],
     [aIdx, A],
@@ -219,7 +234,7 @@ export function issueResponse(
 
   const respSessionId = respondSessionId(params, c, ctx);
   const respProver = new NISigmaProtocol(respRelation, { sessionId: respSessionId });
-  const respProof = respProver.prove([skPlusE], rng);
+  const respProof = respProver.prove([skPlusE]);
   const respPok = serializeProof(respProof, group.scalarSize);
 
   return { A, e, c, pok: respPok };
@@ -265,19 +280,24 @@ export function verifyIssuance(
   const X_G = G.multiply(e).add(pk.W);
 
   // Verify DLEQ proof
-  const verifyRelation = new LinearRelation(group);
-  const [dVarV] = verifyRelation.allocateScalars(1);
-  const [gIdxV, aIdxV, xaIdxV, xgIdxV] = verifyRelation.allocateElements(4);
-  verifyRelation.setElements([
+  const dleqRelation = new LinearRelation(group);
+  const dleqScalars = dleqRelation.allocateScalars(1);
+  const dVarV = dleqScalars[0]!;
+  const dleqElems = dleqRelation.allocateElements(4);
+  const gIdxV = dleqElems[0]!;
+  const aIdxV = dleqElems[1]!;
+  const xaIdxV = dleqElems[2]!;
+  const xgIdxV = dleqElems[3]!;
+  dleqRelation.setElements([
     [gIdxV, G],
     [aIdxV, A],
     [xaIdxV, X_A],
     [xgIdxV, X_G],
   ]);
-  appendDleq(verifyRelation, aIdxV, gIdxV, xaIdxV, xgIdxV, dVarV);
+  appendDleq(dleqRelation, aIdxV, gIdxV, xaIdxV, xgIdxV, dVarV);
 
   const verifySessionId = respondSessionId(params, c, ctx);
-  const verifier = new NISigmaProtocol(verifyRelation, { sessionId: verifySessionId });
+  const verifier = new NISigmaProtocol(dleqRelation, { sessionId: verifySessionId });
   const issuerProof = deserializeProof(group, pok, 1);
 
   if (!verifier.verify(issuerProof)) {
