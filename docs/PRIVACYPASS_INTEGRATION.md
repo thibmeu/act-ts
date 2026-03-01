@@ -1,6 +1,8 @@
-# ACT Integration in cloudflare/privacypass-ts
+# ACT Integration in privacypass-ts
 
-Plan for adding ACT token type (0xE5AD) to cloudflare/privacypass-ts.
+Plan for adding ACT token type (0xE5AD) to privacypass-ts.
+
+**Target:** thibmeu/privacypass-ts fork (feat/act branch) as submodule in this repo
 
 **Specs:**
 
@@ -12,18 +14,54 @@ Plan for adding ACT token type (0xE5AD) to cloudflare/privacypass-ts.
 
 ## Summary
 
-Add ACT token type per draft-schlesinger-privacypass-act-01. Depends on `act` as peer dependency. Wait for sigma-draft-compliance completion before implementation.
+Add ACT token type per draft-schlesinger-privacypass-act-01. Uses `act-ts/vnext` (TLS wire format, NISigmaProtocol proofs). No CBOR dependency.
 
 ---
 
-## Package Changes
+## Repo Structure
 
 ```
-cloudflare/privacypass-ts/
-  src/
-    act_token.ts    # NEW
-    index.ts        # Add TOKEN_TYPES.ACT, export act namespace
-  package.json      # Add peerDep: act
+act-ts/
+  packages/
+    sigma-proofs/           # Existing
+    act-ts/                 # Existing (vnext)
+    privacypass-ts/         # Submodule → thibmeu/privacypass-ts@feat/act
+      src/
+        act_token.ts        # NEW - ACT implementation
+      package.json          # "act-ts": "workspace:*"
+```
+
+---
+
+## Credential Flow
+
+```
+┌────────┐                              ┌────────┐                    ┌────────┐
+│ Client │                              │ Origin │                    │ Issuer │
+└───┬────┘                              └───┬────┘                    └───┬────┘
+    │                                       │                             │
+    │ ──────── Request ────────────────────>│                             │
+    │ <─────── TokenChallenge + cost ───────│                             │
+    │                                       │                             │
+    │ ════════════════════ ISSUANCE (first time) ═════════════════════════│
+    │                                       │                             │
+    │ createTokenRequest()                  │                             │
+    │ ─────────────────── TokenRequest ───────────────────────────────────>
+    │ <──────────────────TokenResponse ────────────────────────────────────│
+    │ finalizeCredential() → CredentialInfo │                             │
+    │                                       │                             │
+    │ ════════════════════ SPEND + REFUND (each request) ═════════════════│
+    │                                       │                             │
+    │ createSpendToken(cost)                │                             │
+    │ ────── Request + Token ──────────────>│                             │
+    │       (Authorization header)          │ verify spend proof          │
+    │                                       │ issue refund                │
+    │ <───── Response ─────────────────────│                             │
+    │       (PrivacyPass-Reverse header)    │                             │
+    │ processRefund()                       │                             │
+    │ → credential updated with new balance │                             │
+    │                                       │                             │
+    │ ════════════════════ REPEAT until exhausted ════════════════════════│
 ```
 
 ---
@@ -94,22 +132,22 @@ interface ACTChallengeParams {
   cost: bigint;
 }
 
-// Wire formats
+// Wire formats (using act-ts/vnext TLS encoding)
 class ACTTokenRequest {
   tokenType: 0xe5ad;
   truncatedKeyId: number; // 1 byte (LSB of issuer_key_id)
-  encodedRequest: Uint8Array; // IssuanceRequest from act
+  encodedRequest: Uint8Array; // encodeIssuanceRequest() from act-ts/vnext
 }
 
 class ACTTokenResponse {
-  encodedResponse: Uint8Array; // IssuanceResponse from act
+  encodedResponse: Uint8Array; // encodeIssuanceResponse() from act-ts/vnext
 }
 
 class ACTToken {
   tokenType: 0xe5ad;
   challengeDigest: Uint8Array; // SHA-256(TokenChallenge), 32 bytes
   issuerKeyId: Uint8Array; // 32 bytes
-  spendProof: Uint8Array; // SpendProof from act
+  spendProof: Uint8Array; // encodeSpendProof() from act-ts/vnext
 }
 
 // Credential info returned from finalizeCredential
@@ -174,17 +212,41 @@ PRIVATE_CREDENTIAL_RESPONSE = 'application/private-credential-response';
 | Interface         | Implements `PrivacyPassClient`, `finalize()` throws, use `finalizeCredential()` |
 | State persistence | Export/import pattern, user handles storage                                     |
 | Reverse flow      | `PrivacyPass-Reverse` header with `GenericBatchTokenResponse` framing           |
+| Wire format       | TLS presentation language via act-ts/vnext (no CBOR)                            |
+| Dependency        | Submodule + workspace dependency                                                |
 
 ---
 
-## Blockers Before Implementation
+## Setup
 
-| Blocker                             | Status      |
-| ----------------------------------- | ----------- |
-| sigma-draft-compliance in act       | In progress |
-| Fix `Buffer.from()` in spend.ts:654 | TODO        |
-| Add consumed flags to state types   | TODO        |
-| Improve CBOR error handling         | TODO        |
+1. Remove `packages/privacypass-act` and all references
+2. Add submodule:
+   ```bash
+   git submodule add -b feat/act git@github.com:thibmeu/privacypass-ts.git packages/privacypass-ts
+   ```
+3. Update root `package.json` workspaces:
+   ```json
+   {
+     "workspaces": ["packages/sigma-proofs", "packages/act-ts", "packages/privacypass-ts"]
+   }
+   ```
+4. Update `privacypass-ts/package.json`:
+   ```json
+   {
+     "dependencies": {
+       "act-ts": "workspace:*"
+     }
+   }
+   ```
+
+---
+
+## Upstream Path
+
+When upstreaming to cloudflare/privacypass-ts:
+
+- Change `"act-ts": "workspace:*"` → `"act-ts": "^x.y.z"` (npm version)
+- Everything else stays the same
 
 ---
 
@@ -201,16 +263,10 @@ PRIVATE_CREDENTIAL_RESPONSE = 'application/private-credential-response';
 
 Panel review identified these priorities:
 
-**P0 (Blockers for act):**
-
-- Fix `Buffer.from()` → `bytesToHex()` in spend.ts (Workers crash)
-- Context must use `hashToScalar(concat(...))`
-- Add consumed flags to prevent state reuse
-
 **P1 (High):**
 
 - Define ACT-specific error classes
-- Document Workers paid-tier-only (range proofs ~200ms)
+- Document Workers paid-tier-only (range proofs ~200ms for L=64)
 - Credential size guidance for Durable Object storage
 
 **P2 (Medium):**
@@ -218,3 +274,34 @@ Panel review identified these priorities:
 - Make `createSpendToken` async (signals CPU cost)
 - State schema versioning for migrations
 - Atomic balance check in `createSpendToken`
+
+---
+
+## act-ts/vnext API Surface
+
+Key exports from `act-ts/vnext`:
+
+```typescript
+// Types
+export type { SystemParams, CreditToken, IssuanceState, SpendState, ... }
+
+// Key generation
+export { keyGen, derivePublicKey, publicKeyToBytes, publicKeyFromBytes }
+
+// Issuance
+export { issueRequest, issueResponse, verifyIssuance }
+
+// Spending
+export { proveSpend, verifySpendProof, issueRefund, constructRefundToken }
+
+// TLS encoding (no CBOR)
+export {
+  encodeIssuanceRequest, decodeIssuanceRequest,
+  encodeIssuanceResponse, decodeIssuanceResponse,
+  encodeSpendProof, decodeSpendProof,
+  encodeRefund, decodeRefund,
+  encodeCreditToken, decodeCreditToken,
+  encodeIssuanceState, decodeIssuanceState,
+  encodeSpendState, decodeSpendState,
+}
+```
