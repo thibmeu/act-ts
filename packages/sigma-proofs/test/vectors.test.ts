@@ -157,16 +157,24 @@ describe('spec test vectors (BLS12-381)', () => {
     expect(ni.verifyBatchable(proof)).toBe(true);
   });
 
-  // POC interop tests - require investigation of transcript differences
-  // Our sponge implementation matches spec vectors (duplexSpongeVectors.json)
-  // but full Fiat-Shamir transcript produces different challenges.
-  // Needs alignment with POC on session ID computation or other details.
-  it.todo('discrete_logarithm - verifies spec proof (blocked: transcript mismatch with POC)');
-  it.todo('dleq - verifies spec proof (blocked: transcript mismatch with POC)');
-  it.todo('pedersen_commitment - verifies spec proof (blocked: transcript mismatch with POC)');
-  it.todo('pedersen_commitment_dleq - verifies spec proof (blocked: transcript mismatch with POC)');
+  // POC interop tests - blocked on Fiat-Shamir transcript mismatch
+  //
+  // Status (2026-03-02):
+  // - Instance labels NOW MATCH (getInstanceLabel() fixed)
+  // - Sponge implementation matches spec vectors (duplexSpongeVectors.json)
+  // - Sigma protocol verification works (non-batchable proof verifies with embedded challenge)
+  // - Challenge computation differs - our transcript produces different challenges than POC
+  //
+  // Remaining issue: session ID hashing or codec absorb order differs from POC.
+  // Need to trace exact byte sequences in POC to find discrepancy.
+  it.todo('discrete_logarithm - verifies spec proof (blocked: challenge computation mismatch)');
+  it.todo('dleq - verifies spec proof (blocked: challenge computation mismatch)');
+  it.todo('pedersen_commitment - verifies spec proof (blocked: challenge computation mismatch)');
   it.todo(
-    'bbs_blind_commitment_computation - verifies spec proof (blocked: transcript mismatch with POC)'
+    'pedersen_commitment_dleq - verifies spec proof (blocked: challenge computation mismatch)'
+  );
+  it.todo(
+    'bbs_blind_commitment_computation - verifies spec proof (blocked: challenge computation mismatch)'
   );
 });
 
