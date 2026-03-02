@@ -12,7 +12,7 @@ import {
   verifyIssuance,
   proveSpend,
   verifySpendProof,
-  SeededPRNG,
+  SeededPRNGForTestingOnly,
 } from '../src/index-vnext.js';
 
 describe('Debug Spend', () => {
@@ -20,7 +20,7 @@ describe('Debug Spend', () => {
     const group = ristretto255;
     const seed = new Uint8Array(32);
     seed[0] = 0x99;
-    const rng = new SeededPRNG(seed);
+    const rng = new SeededPRNGForTestingOnly(seed);
 
     const params = generateParameters(group, 'ACT-v1:test:debug:local:2026', 4);
     const { privateKey: sk, publicKey: pk } = keyGen(group, rng);
@@ -75,7 +75,7 @@ describe('Debug Spend', () => {
     const group = ristretto255;
     const seed = new Uint8Array(32);
     seed[0] = 0xaa;
-    const rng = new SeededPRNG(seed);
+    const rng = new SeededPRNGForTestingOnly(seed);
 
     const params = generateParameters(group, 'ACT-v1:test:debug:local:2026', 4);
     const { privateKey: sk, publicKey: pk } = keyGen(group, rng);
@@ -101,7 +101,7 @@ describe('Debug Spend', () => {
     const group = ristretto255;
     const seed = new Uint8Array(32);
     seed[0] = 0xbb + L;
-    const rng = new SeededPRNG(seed);
+    const rng = new SeededPRNGForTestingOnly(seed);
 
     const maxValue = (1n << BigInt(L)) - 1n;
     const creditAmount = maxValue > 10n ? 10n : maxValue;
@@ -125,7 +125,7 @@ describe('Debug Spend', () => {
     const group = ristretto255;
     const seed = new Uint8Array(32);
     seed[0] = 0xcc + L;
-    const rng = new SeededPRNG(seed);
+    const rng = new SeededPRNGForTestingOnly(seed);
 
     const maxValue = (1n << BigInt(L)) - 1n;
     const creditAmount = maxValue > 10n ? 10n : maxValue;
@@ -149,7 +149,7 @@ describe('Debug Spend', () => {
     const group = ristretto255;
     const seed = new Uint8Array(32);
     seed[0] = 0xdd + L;
-    const rng = new SeededPRNG(seed);
+    const rng = new SeededPRNGForTestingOnly(seed);
 
     const maxValue = (1n << BigInt(L)) - 1n;
     const creditAmount = maxValue;

@@ -3,7 +3,7 @@
  *
  * Provides both:
  * - WebCryptoPRNG: Production CSPRNG using Web Crypto API
- * - SeededPRNG: Deterministic PRNG for testing (SHAKE128-based)
+ * - SeededPRNGForTestingOnly: Deterministic PRNG for testing (SHAKE128-based)
  */
 
 import { shake128 } from '@noble/hashes/sha3';
@@ -35,7 +35,7 @@ export class WebCryptoPRNG implements PRNG {
  *
  * WARNING: Only use for testing! Not cryptographically secure for production.
  */
-export class SeededPRNG implements PRNG {
+export class SeededPRNGForTestingOnly implements PRNG {
   private counter: number = 0;
   private readonly seed: Uint8Array;
 

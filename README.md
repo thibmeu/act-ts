@@ -22,10 +22,11 @@ TypeScript implementation of Anonymous Credit Tokens (ACT) for privacy-preservin
 
 ## Packages
 
-| Package                                 | Description                               | Spec                                                                                                    |
-| --------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| [sigma-proofs](./packages/sigma-proofs) | Sigma protocols for zero-knowledge proofs | [draft-irtf-cfrg-sigma-protocols-01](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/) |
-| [act-ts](./packages/act-ts)             | Anonymous Credit Tokens core protocol     | [draft-schlesinger-cfrg-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/)           |
+| Package                                     | Description                                                                                                   | Spec                                                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [sigma-proofs](./packages/sigma-proofs)     | Sigma protocols for zero-knowledge proofs                                                                     | [draft-irtf-cfrg-sigma-protocols-01](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/)  |
+| [act-ts](./packages/act-ts)                 | Anonymous Credit Tokens core protocol                                                                         | [draft-schlesinger-cfrg-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/)            |
+| [privacypass-ts](./packages/privacypass-ts) | Privacy Pass integration (fork of [@cloudflare/privacypass-ts](https://github.com/cloudflare/privacypass-ts)) | [draft-schlesinger-privacypass-act](https://datatracker.ietf.org/doc/draft-schlesinger-privacypass-act/) |
 
 ## What is ACT?
 
@@ -63,12 +64,12 @@ import {
   proveSpend,
   verifyAndRefund,
   constructRefundToken,
-  SeededPRNG,
-} from 'act-ts';
+  WebCryptoPRNG,
+} from 'act-ts/vnext';
 
-// Setup (vnext API)
-const group = ristretto255();
-const rng = new SeededPRNG(crypto.getRandomValues(new Uint8Array(32)));
+// Setup
+const group = ristretto255;
+const rng = new WebCryptoPRNG();
 const domainSeparator = new TextEncoder().encode('ACT-v1:example:api:prod');
 const params = generateParameters(group, domainSeparator, 64); // L=64 bits
 const { privateKey: sk, publicKey: pk } = keyGen(group, rng);

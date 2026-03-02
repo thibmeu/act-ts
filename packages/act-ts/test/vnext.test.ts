@@ -15,7 +15,7 @@ import {
   issueRefund,
   constructRefundToken,
   verifyAndRefund,
-  SeededPRNG,
+  SeededPRNGForTestingOnly,
   ACTError,
   toHex,
   type SystemParams,
@@ -32,7 +32,7 @@ describe('ACT VNEXT', () => {
   function makeRng(testSeed: number): PRNG {
     const seed = new Uint8Array(32);
     seed[0] = testSeed;
-    return new SeededPRNG(seed);
+    return new SeededPRNGForTestingOnly(seed);
   }
 
   beforeAll(() => {

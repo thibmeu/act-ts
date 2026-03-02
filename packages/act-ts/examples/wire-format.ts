@@ -4,10 +4,11 @@
 /**
  * Example: Wire Format Encoding
  *
- * Demonstrates CBOR serialization for network transmission.
+ * Demonstrates TLS presentation language serialization for network transmission.
  */
 
 import {
+  ristretto255,
   generateParameters,
   keyGen,
   issueRequest,
@@ -22,64 +23,67 @@ import {
   decodeSpendProof,
   encodeCreditToken,
   decodeCreditToken,
-  group,
+  WebCryptoPRNG,
   toHex,
-} from '../src/index.js';
+} from '../src/index-vnext.js';
 
 export async function wireFormatExample(): Promise<void> {
   console.log('=== ACT Wire Format Example ===\n');
 
   // Setup
-  const params = generateParameters('ACT-v1:example:api:prod:2024-01-15', 8);
-  const { privateKey: sk, publicKey: pk } = keyGen();
+  const group = ristretto255;
+  const rng = new WebCryptoPRNG();
+  const domainSeparator = new TextEncoder().encode('ACT-v1:example:api:prod');
+  const params = generateParameters(group, domainSeparator, 8);
+  const { privateKey: sk, publicKey: pk } = keyGen(group, rng);
   const ctx = group.randomScalar();
 
   // === Issuance Request ===
   console.log('--- Issuance Request ---');
-  const [request, clientState] = issueRequest(params);
+  const [request, clientState] = issueRequest(params, ctx, rng);
 
   const requestBytes = encodeIssuanceRequest(request);
   console.log(`Encoded request: ${requestBytes.length} bytes`);
   console.log(`  Hex: ${toHex(requestBytes).slice(0, 64)}...`);
 
-  const decodedRequest = decodeIssuanceRequest(requestBytes);
+  const decodedRequest = decodeIssuanceRequest(group, requestBytes);
   console.log(`  Round-trip: OK`);
   console.log();
 
   // === Issuance Response ===
   console.log('--- Issuance Response ---');
-  const response = issueResponse(params, sk, decodedRequest, 100n, ctx);
+  const response = issueResponse(params, sk, decodedRequest, 100n, ctx, rng);
 
-  const responseBytes = encodeIssuanceResponse(response);
+  const responseBytes = encodeIssuanceResponse(group, { ...response, ctx });
   console.log(`Encoded response: ${responseBytes.length} bytes`);
   console.log(`  Hex: ${toHex(responseBytes).slice(0, 64)}...`);
 
-  const decodedResponse = decodeIssuanceResponse(responseBytes);
+  const decodedResponse = decodeIssuanceResponse(group, responseBytes);
   console.log(`  Round-trip: OK`);
   console.log();
 
   // === Credit Token (client storage) ===
   console.log('--- Credit Token ---');
-  const token = verifyIssuance(params, pk, request, decodedResponse, clientState);
+  const token = verifyIssuance(params, pk, decodedResponse, clientState);
 
-  const tokenBytes = encodeCreditToken(token);
+  const tokenBytes = encodeCreditToken(group, token);
   console.log(`Encoded token: ${tokenBytes.length} bytes`);
   console.log(`  Hex: ${toHex(tokenBytes).slice(0, 64)}...`);
 
-  const decodedToken = decodeCreditToken(tokenBytes);
+  const decodedToken = decodeCreditToken(group, tokenBytes);
   console.log(`  Balance: ${decodedToken.c} credits`);
   console.log(`  Round-trip: OK`);
   console.log();
 
   // === Spend Proof ===
   console.log('--- Spend Proof ---');
-  const [proof] = proveSpend(params, decodedToken, 30n);
+  const [proof] = proveSpend(params, decodedToken, 30n, rng);
 
-  const proofBytes = encodeSpendProof(proof);
+  const proofBytes = encodeSpendProof(group, proof);
   console.log(`Encoded proof: ${proofBytes.length} bytes`);
   console.log(`  Hex: ${toHex(proofBytes).slice(0, 64)}...`);
 
-  const decodedProof = decodeSpendProof(proofBytes);
+  const decodedProof = decodeSpendProof(group, params.L, proofBytes);
   console.log(`  Spend amount: ${decodedProof.s}`);
   console.log(`  Round-trip: OK`);
   console.log();

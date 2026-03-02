@@ -17,7 +17,7 @@ export type GroupElement = SigmaGroupElement;
  * PRNG interface for deterministic randomness.
  *
  * Production implementations MUST use a CSPRNG (FIPS 186).
- * Test implementations may use SeededPRNG for reproducibility.
+ * Test implementations may use SeededPRNGForTestingOnly for reproducibility.
  */
 export interface PRNG {
   /** Generate n random bytes */

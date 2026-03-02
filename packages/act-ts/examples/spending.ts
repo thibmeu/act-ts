@@ -9,6 +9,7 @@
  */
 
 import {
+  ristretto255,
   generateParameters,
   keyGen,
   issueRequest,
@@ -17,22 +18,25 @@ import {
   proveSpend,
   verifyAndRefund,
   constructRefundToken,
-  group,
+  WebCryptoPRNG,
   toHex,
-} from '../src/index.js';
+} from '../src/index-vnext.js';
 
 export async function spendingExample(): Promise<void> {
   console.log('=== ACT Spending Example ===\n');
 
-  // Setup (same as issuance)
-  const params = generateParameters('ACT-v1:example:api:prod:2024-01-15', 8);
-  const { privateKey: sk, publicKey: pk } = keyGen();
+  // Setup
+  const group = ristretto255;
+  const rng = new WebCryptoPRNG();
+  const domainSeparator = new TextEncoder().encode('ACT-v1:example:api:prod');
+  const params = generateParameters(group, domainSeparator, 8);
+  const { privateKey: sk, publicKey: pk } = keyGen(group, rng);
   const ctx = group.randomScalar();
 
   // First, get a token via issuance
-  const [request, clientState] = issueRequest(params);
-  const response = issueResponse(params, sk, request, 100n, ctx);
-  const token = verifyIssuance(params, pk, request, response, clientState);
+  const [request, clientState] = issueRequest(params, ctx, rng);
+  const response = issueResponse(params, sk, request, 100n, ctx, rng);
+  const token = verifyIssuance(params, pk, response, clientState);
 
   console.log(`Starting balance: ${token.c} credits`);
   console.log();
@@ -49,7 +53,7 @@ export async function spendingExample(): Promise<void> {
   // Client
   // (proof, spendState) = ProveSpend(params, token, amount)
   const spendAmount = 30n;
-  const [proof, spendState] = proveSpend(params, token, spendAmount);
+  const [proof, spendState] = proveSpend(params, token, spendAmount, rng);
   console.log('Step 1: Client creates spend proof');
   console.log(`  Spending: ${spendAmount} credits`);
   console.log(`  Nullifier revealed: ${toHex(proof.k.toBytes()).slice(0, 32)}...`);
@@ -69,7 +73,7 @@ export async function spendingExample(): Promise<void> {
   //
   // refund = VerifyAndRefund(params, sk, proof, nullifierDb, returnAmount)
   const returnAmount = 0n; // Could return partial credits
-  const refund = verifyAndRefund(params, sk, proof, usedNullifiers, returnAmount);
+  const refund = verifyAndRefund(params, sk, proof, usedNullifiers, returnAmount, rng);
   console.log('Step 2: Issuer verifies and issues refund');
   console.log(`  Proof valid: true`);
   console.log(`  Nullifier recorded (prevents double-spend)`);

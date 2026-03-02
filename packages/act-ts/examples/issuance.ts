@@ -9,25 +9,28 @@
  */
 
 import {
+  ristretto255,
   generateParameters,
   keyGen,
   issueRequest,
   issueResponse,
   verifyIssuance,
-  group,
+  WebCryptoPRNG,
   toHex,
-} from '../src/index.js';
+} from '../src/index-vnext.js';
 
 export async function issuanceExample(): Promise<void> {
   console.log('=== ACT Issuance Example ===\n');
 
   // Setup: Generate system parameters and issuer keys
-  const domainSeparator = 'ACT-v1:example:api:prod:2024-01-15';
+  const group = ristretto255;
+  const rng = new WebCryptoPRNG();
+  const domainSeparator = new TextEncoder().encode('ACT-v1:example:api:prod');
   const L = 8; // 8-bit credits (0-255)
-  const params = generateParameters(domainSeparator, L);
-  const { privateKey: sk, publicKey: pk } = keyGen();
+  const params = generateParameters(group, domainSeparator, L);
+  const { privateKey: sk, publicKey: pk } = keyGen(group, rng);
 
-  console.log(`Domain: ${domainSeparator}`);
+  console.log(`Domain: ${new TextDecoder().decode(domainSeparator)}`);
   console.log(`Bit length: ${L} (max credits: ${(1n << BigInt(L)) - 1n})`);
   console.log(`Public key: ${toHex(pk.W.toBytes()).slice(0, 32)}...`);
   console.log();
@@ -42,8 +45,8 @@ export async function issuanceExample(): Promise<void> {
   // The nullifier k and blinding factor r are kept secret
   //
   // Client
-  // (request, state) = IssueRequest(params)
-  const [request, clientState] = issueRequest(params);
+  // (request, state) = IssueRequest(params, ctx)
+  const [request, clientState] = issueRequest(params, ctx, rng);
   console.log('Step 1: Client creates issuance request');
   console.log(`  K (commitment): ${toHex(request.K.toBytes()).slice(0, 32)}...`);
   console.log();
@@ -59,7 +62,7 @@ export async function issuanceExample(): Promise<void> {
   //
   // response = IssueResponse(params, sk, request, credits, ctx)
   const credits = 100n;
-  const response = issueResponse(params, sk, request, credits, ctx);
+  const response = issueResponse(params, sk, request, credits, ctx, rng);
   console.log('Step 2: Issuer creates response');
   console.log(`  Credits issued: ${credits}`);
   console.log(`  A (signature): ${toHex(response.A.toBytes()).slice(0, 32)}...`);
@@ -73,8 +76,8 @@ export async function issuanceExample(): Promise<void> {
   // Client
   // Step 3: Client verifies response and extracts token
   //
-  // token = VerifyIssuance(params, pk, request, response, state)
-  const token = verifyIssuance(params, pk, request, response, clientState);
+  // token = VerifyIssuance(params, pk, response, state)
+  const token = verifyIssuance(params, pk, response, clientState);
   console.log('Step 3: Client verifies and extracts token');
   console.log(`  Token balance: ${token.c} credits`);
   console.log(`  Nullifier: ${toHex(token.k.toBytes()).slice(0, 32)}...`);

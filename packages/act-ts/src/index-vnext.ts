@@ -91,6 +91,6 @@ export {
 } from './encoding-vnext.js';
 
 // RNG implementations
-export { WebCryptoPRNG, SeededPRNG, defaultPRNG, toHex } from './rng.js';
+export { WebCryptoPRNG, SeededPRNGForTestingOnly, defaultPRNG, toHex } from './rng.js';
 
 export const VERSION = '0.1.0-vnext';

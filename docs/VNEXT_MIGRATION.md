@@ -215,7 +215,7 @@ New error codes added:
 
 ### Phase 4: Testing
 
-1. Generate new test vectors with SeededPRNG
+1. Generate new test vectors with SeededPRNGForTestingOnly
 2. Cross-validate with reference implementation (when available)
 
 ## Compatibility Notes
@@ -233,14 +233,14 @@ New error codes added:
 
 Rust repo: https://github.com/SamuelSchlesinger/anonymous-credit-tokens/tree/samschles/sigma-draft-compliance
 
-### 2. SeededPRNG
+### 2. SeededPRNGForTestingOnly
 
-`SeededPRNG` is only needed for **test vector generation** (Appendix B of ACT draft). Protocol functions take `rng: PRNG` as parameter.
+`SeededPRNGForTestingOnly` is only needed for **test vector generation** (Appendix B of ACT draft). Protocol functions take `rng: PRNG` as parameter.
 
 **Options for testing:**
 
 - Rust test vectors include intermediate random values (preferred)
-- Or implement JS `SeededPRNG` using SHAKE128 (matches spec)
+- Or implement JS `SeededPRNGForTestingOnly` using SHAKE128 (matches spec)
 
 Our sigma-proofs already takes randomness as function input, so we can pass pre-generated values.
 

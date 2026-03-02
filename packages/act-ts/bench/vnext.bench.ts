@@ -16,7 +16,7 @@ import {
   verifySpendProof,
   issueRefund,
   constructRefundToken,
-  SeededPRNG,
+  SeededPRNGForTestingOnly,
   type SystemParams,
   type KeyPair,
   type CreditToken,
@@ -31,11 +31,11 @@ function createParams(L: number): SystemParams {
   return generateParameters(group, `ACT-v1:bench:test:local:2026`, L);
 }
 
-function createRng(seed: number): SeededPRNG {
+function createRng(seed: number): SeededPRNGForTestingOnly {
   const seedBytes = new Uint8Array(32);
   seedBytes[0] = seed & 0xff;
   seedBytes[1] = (seed >> 8) & 0xff;
-  return new SeededPRNG(seedBytes);
+  return new SeededPRNGForTestingOnly(seedBytes);
 }
 
 // Pre-compute params for different L values to avoid setup overhead in benchmarks

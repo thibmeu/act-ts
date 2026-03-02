@@ -648,9 +648,20 @@ export function verifySpendProof(params: SystemParams, sk: PrivateKey, proof: Sp
   const { group, L } = params;
   const { k, s, ctx, APrime, BBar, Com, pok } = proof;
 
+  // Validate spend amount is in range [0, 2^L)
+  const maxValue = 1n << BigInt(L);
+  if (s < 0n || s >= maxValue) {
+    throw new ACTError(`Spend amount out of range [0, 2^${L})`, ACTErrorCode.InvalidSpendProof);
+  }
+
   // Check A' is not identity
   if (APrime.equals(group.identity())) {
     throw new ACTError("A' is identity", ACTErrorCode.IdentityPoint);
+  }
+
+  // Check B_bar is not identity
+  if (BBar.equals(group.identity())) {
+    throw new ACTError('B_bar is identity', ACTErrorCode.IdentityPoint);
   }
 
   // Validate proof structure

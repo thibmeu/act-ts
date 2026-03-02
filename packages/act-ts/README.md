@@ -149,6 +149,32 @@ Client                                    Issuer
 - **Issuer trust**: Issuer can decline refunds (by design for revocation)
 - **Sequential spending**: Each spend requires refund before next spend
 
+## Security Considerations
+
+### Memory Zeroization
+
+JavaScript/TypeScript cannot guarantee memory zeroization. Secret material (blinding factors, private keys, credential data) may persist in memory after use until garbage collected. This is an inherent platform limitation.
+
+**Mitigations:**
+
+- Minimize credential lifetime in memory
+- Use secure enclaves for high-security deployments
+- Consider WebAssembly with explicit memory management for sensitive operations
+
+### Timing Side-Channels
+
+The implementation delegates cryptographic operations to `@noble/curves`, which provides constant-time scalar and point arithmetic. However:
+
+- JavaScript bigint operations may not be constant-time
+- Garbage collection timing may leak information
+- JIT compilation behavior is unpredictable
+
+For high-assurance deployments, consider native implementations.
+
+### State Export
+
+The `export()` / `import()` functions for client state serialize credential secrets in plaintext. Callers must encrypt exported state before storage or transmission.
+
 ## Development
 
 ```bash
