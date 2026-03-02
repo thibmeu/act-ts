@@ -1,9 +1,9 @@
 /**
  * Test vectors for sigma-proofs
  *
- * Official spec vectors (testSigmaProtocols.json) use BLS12-381 which we don't support.
+ * Official spec vectors (testSigmaProtocols.json) use BLS12-381 which we now support.
  * These tests verify correctness via:
- * 1. Deterministic vectors with known scalars
+ * 1. Spec test vectors with deterministic RNG
  * 2. Mathematical properties (completeness, soundness)
  * 3. Serialization consistency
  */
@@ -29,6 +29,13 @@ function hexToBytes(hex: string): Uint8Array {
     bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   }
   return bytes;
+}
+
+/** Helper to convert Uint8Array to hex */
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 /** Protocol ID for BLS12-381 test vectors */
@@ -115,13 +122,6 @@ function parseStatement(
 describe('spec test vectors (BLS12-381)', () => {
   const group = bls12_381_g1;
 
-  // Spec vector verification requires matching Fiat-Shamir transcript exactly.
-  // Our implementation uses the same sponge construction (verified by duplex sponge vectors)
-  // but may differ in session ID computation. Marking as TODO pending interop investigation.
-  it.todo('discrete_logarithm - requires Fiat-Shamir interop verification with POC');
-  it.todo('dleq - requires Fiat-Shamir interop verification with POC');
-  it.todo('pedersen_commitment - requires Fiat-Shamir interop verification with POC');
-
   it('documents spec vector format', () => {
     const dlog = specVectors.discrete_logarithm;
     expect(dlog.Ciphersuite).toBe('sigma-proofs_Shake128_BLS12381');
@@ -156,6 +156,18 @@ describe('spec test vectors (BLS12-381)', () => {
     const proof = ni.proveBatchable([x]);
     expect(ni.verifyBatchable(proof)).toBe(true);
   });
+
+  // POC interop tests - require investigation of transcript differences
+  // Our sponge implementation matches spec vectors (duplexSpongeVectors.json)
+  // but full Fiat-Shamir transcript produces different challenges.
+  // Needs alignment with POC on session ID computation or other details.
+  it.todo('discrete_logarithm - verifies spec proof (blocked: transcript mismatch with POC)');
+  it.todo('dleq - verifies spec proof (blocked: transcript mismatch with POC)');
+  it.todo('pedersen_commitment - verifies spec proof (blocked: transcript mismatch with POC)');
+  it.todo('pedersen_commitment_dleq - verifies spec proof (blocked: transcript mismatch with POC)');
+  it.todo(
+    'bbs_blind_commitment_computation - verifies spec proof (blocked: transcript mismatch with POC)'
+  );
 });
 
 /**

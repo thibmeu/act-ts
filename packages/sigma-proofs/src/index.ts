@@ -9,7 +9,13 @@
 
 export { LinearMap, type LinearCombination } from './linear-map.js';
 export { LinearRelation } from './linear-relation.js';
-export { SchnorrProof, type ProverCommitment, type Commitment, type Response } from './schnorr.js';
+export {
+  SchnorrProof,
+  type ProverCommitment,
+  type Commitment,
+  type Response,
+  type ScalarRng,
+} from './schnorr.js';
 export { type Group, type Scalar, type GroupElement } from './group.js';
 export {
   appendPedersen,
@@ -30,3 +36,6 @@ export {
   type NIProof,
   type NIProofBatchable,
 } from './fiat-shamir/index.js';
+
+// Test utilities (FOR TESTING ONLY)
+export { TestDRNGForTestingOnly } from './test-drng.js';

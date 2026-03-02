@@ -6,7 +6,7 @@
 
 import type { Group, GroupElement, Scalar } from '../group.js';
 import type { LinearRelation } from '../linear-relation.js';
-import { SchnorrProof } from '../schnorr.js';
+import { SchnorrProof, type ScalarRng } from '../schnorr.js';
 import { asciiToBytes, concat } from '../utils.js';
 import { Shake128Sponge, type DuplexSponge } from './sponge.js';
 import { ByteCodec, type Codec } from './codec.js';
@@ -167,11 +167,12 @@ export class NISigmaProtocol {
    * The verifier recomputes the commitment from the challenge and response.
    *
    * @param witness - The secret witness values
+   * @param rng - Optional RNG for deterministic nonce generation (TESTING ONLY)
    * @returns The non-interactive proof
    */
-  prove(witness: readonly Scalar[]): NIProof {
+  prove(witness: readonly Scalar[], rng?: ScalarRng): NIProof {
     // Step 1: Generate commitment
-    const prover = this.sigma.proverCommit(witness as Scalar[]);
+    const prover = this.sigma.proverCommit(witness as Scalar[], rng);
 
     // Step 2: Absorb commitment into hash state
     const codec = this.codec.clone();
@@ -213,11 +214,12 @@ export class NISigmaProtocol {
    * This format includes the commitment explicitly, allowing for batch verification.
    *
    * @param witness - The secret witness values
+   * @param rng - Optional RNG for deterministic nonce generation (TESTING ONLY)
    * @returns The batchable proof
    */
-  proveBatchable(witness: readonly Scalar[]): NIProofBatchable {
+  proveBatchable(witness: readonly Scalar[], rng?: ScalarRng): NIProofBatchable {
     // Step 1: Generate commitment
-    const prover = this.sigma.proverCommit(witness as Scalar[]);
+    const prover = this.sigma.proverCommit(witness as Scalar[], rng);
 
     // Step 2: Absorb commitment and get challenge
     const codec = this.codec.clone();

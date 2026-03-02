@@ -7,6 +7,16 @@
 import type { GroupElement, Scalar } from './group.js';
 import type { LinearRelation } from './linear-relation.js';
 
+/**
+ * Interface for generating random scalars.
+ *
+ * Allows injection of deterministic RNG for testing.
+ */
+export interface ScalarRng {
+  /** Generate a random scalar */
+  randomScalar(): Scalar;
+}
+
 /** Commitment message (array of group elements) */
 export type Commitment = readonly GroupElement[];
 
@@ -57,9 +67,10 @@ export class SchnorrProof {
    * The respond function can only be called once to prevent nonce reuse.
    *
    * @param witness - The secret witness (array of scalars)
+   * @param rng - Optional RNG for deterministic nonce generation (TESTING ONLY)
    * @returns ProverCommitment with commitment and respond function
    */
-  proverCommit(witness: Scalar[]): ProverCommitment {
+  proverCommit(witness: Scalar[], rng?: ScalarRng): ProverCommitment {
     if (witness.length !== this.relation.numScalars) {
       throw new Error(
         `Witness length ${witness.length} does not match expected ${this.relation.numScalars}`
@@ -68,8 +79,10 @@ export class SchnorrProof {
 
     // Generate random nonces
     const nonces: Scalar[] = [];
+    const randomScalar =
+      rng?.randomScalar.bind(rng) ?? this.relation.group.randomScalar.bind(this.relation.group);
     for (let i = 0; i < this.relation.numScalars; i++) {
-      nonces.push(this.relation.group.randomScalar());
+      nonces.push(randomScalar());
     }
 
     // Compute commitment: linearMap(nonces)
