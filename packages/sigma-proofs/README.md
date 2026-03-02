@@ -9,7 +9,7 @@ Sigma Protocols for zero-knowledge proofs in TypeScript.
 - LinearRelation constraint system for composable proofs
 - Interactive SchnorrProof with prover/verifier/simulator
 - Non-interactive proofs via Fiat-Shamir (SHAKE128 sponge)
-- Ristretto255 and P-256 ciphersuites
+- Ristretto255, P-256, and BLS12-381 G1 ciphersuites
 
 ## Installation
 
@@ -105,10 +105,11 @@ For non-interactive proofs, apply Fiat-Shamir: hash the commitment to derive the
 
 ## Ciphersuites
 
-| Ciphersuite    | Import                                                | Use Case                           |
-| -------------- | ----------------------------------------------------- | ---------------------------------- |
-| `ristretto255` | `import { ristretto255 } from '@aspect/sigma-proofs'` | Recommended for new applications   |
-| `p256`         | `import { p256 } from '@aspect/sigma-proofs'`         | NIST compliance, WebCrypto interop |
+| Ciphersuite    | Import                                        | Use Case                           |
+| -------------- | --------------------------------------------- | ---------------------------------- |
+| `ristretto255` | `import { ristretto255 } from 'sigma-proofs'` | Recommended for new applications   |
+| `p256`         | `import { p256 } from 'sigma-proofs'`         | NIST compliance, WebCrypto interop |
+| `bls12_381_g1` | `import { bls12_381_g1 } from 'sigma-proofs'` | BBS signatures, spec test vectors  |
 
 ### Adding Custom Groups
 
@@ -222,31 +223,24 @@ Based on [draft-irtf-cfrg-sigma-protocols-01](https://www.ietf.org/archive/id/dr
 
 - Simulator functions (`simulateResponse`, `simulateCommitment`, `simulate`)
 - Fiat-Shamir transformation (draft-irtf-cfrg-fiat-shamir-01)
-  - SHAKE128 duplex sponge
+  - SHAKE128 duplex sponge (verified against spec test vectors)
   - ByteCodec for absorb/squeeze
   - NISigmaProtocol for non-interactive proofs
+- BLS12-381 G1 ciphersuite
+- Statement/instance label serialization
 
 **Not yet implemented:**
 
 - OR-composition
-- BLS12-381 ciphersuite (spec test vectors use this)
-- Statement serialization for instance labels
 - Native MSM optimization
-- Test vector generation (for cross-implementation validation)
+- Spec test vector interop (transcript alignment with POC pending)
 
 ## Roadmap
 
-### Near-term
-
-- [ ] BLS12-381 ciphersuite (required for spec test vectors)
-- [ ] Statement/instance label serialization per Fiat-Shamir spec §4
+- [ ] Spec test vector interop (requires POC transcript alignment)
 - [ ] Import VOPRF DLEQ test vectors from RFC 9497
-
-### Future
-
 - [ ] OR-composition for disjunctive proofs
 - [ ] Native MSM for performance
-- [ ] Test vector export (JSON format compatible with reference implementations)
 
 ## License
 

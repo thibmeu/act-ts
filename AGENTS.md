@@ -1,6 +1,6 @@
 # Agent Guidelines
 
-**Generated:** 2026-03-01 | **Commit:** 0c70498 | **Branch:** main
+**Generated:** 2026-03-02 | **Commit:** 2ee6e7c | **Branch:** main
 
 Anonymous Credit Tokens (ACT) + sigma protocols in TypeScript. Targets: browser, Cloudflare Workers, Node.js.
 
@@ -21,16 +21,16 @@ npm run format        # Auto-fix
 
 ```
 packages/
-  sigma-proofs/       # Sigma protocols (112 tests) - COMPLETE
+  sigma-proofs/       # Sigma protocols (119 tests)
     src/fiat-shamir/  # SHAKE128 sponge, NISigmaProtocol
-    src/ciphersuites/ # ristretto255, P-256
-  act-ts/             # ACT core (124 tests) - vnext active
+    src/ciphersuites/ # ristretto255, P-256, BLS12-381
+  act-ts/             # ACT core (121 tests) - vnext active
     src/*-vnext.ts    # New API (use these)
     src/*.ts          # Old API (deprecated)
+  privacypass-ts/     # Privacy Pass integration (96 tests)
 docs/
   ARCHITECTURE.md     # Technical design
   VNEXT_MIGRATION.md  # Migration notes
-  reviewers/          # Review checklists
 ```
 
 ---
@@ -49,8 +49,10 @@ docs/
 | Task             | Location                                                |
 | ---------------- | ------------------------------------------------------- |
 | Group operations | `sigma-proofs/src/ciphersuites/ristretto255.ts`         |
+| BLS12-381        | `sigma-proofs/src/ciphersuites/bls12-381.ts`            |
 | Schnorr proofs   | `sigma-proofs/src/schnorr.ts`                           |
 | Fiat-Shamir      | `sigma-proofs/src/fiat-shamir/sponge.ts`, `ni-sigma.ts` |
+| Test DRNG        | `sigma-proofs/src/test-drng.ts`                         |
 | ACT issuance     | `act-ts/src/issuance-vnext.ts`                          |
 | ACT spending     | `act-ts/src/spend-vnext.ts`                             |
 | Range proofs     | `act-ts/src/spend-vnext.ts:buildSpendRelation()`        |
@@ -99,55 +101,42 @@ docs/
 - **Vector files**: `test/vectors/*.json` from IETF specs
 - **Roundtrip tests**: Required for all serialization
 - **Property tests**: `fast-check` for encodings
-- **Parameterized**: Same tests run across ristretto255, P-256
-- **`it.todo()`**: For unsupported features (e.g., BLS12-381)
+- **Parameterized**: Same tests run across ristretto255, P-256, BLS12-381
+- **`it.todo()`**: For blocked features with reason
 
 ---
 
 ## Current Status
 
-| Package      | Status       | Tests |
-| ------------ | ------------ | ----- |
-| sigma-proofs | Complete     | 112   |
-| act-ts       | vnext active | 124   |
+| Package        | Status   | Tests |
+| -------------- | -------- | ----- |
+| sigma-proofs   | Complete | 119   |
+| act-ts         | vnext    | 121   |
+| privacypass-ts | Complete | 96    |
 
-### What's Done (vnext)
+### What's Done
 
 - SHAKE128 Fiat-Shamir (draft-irtf-cfrg-fiat-shamir-01)
+- SHAKE128 sponge verified against spec vectors
+- BLS12-381 G1 ciphersuite
 - Algebraic range proofs (replacing CDS OR-proofs)
 - TLS wire format (replacing CBOR)
 - Horner optimization for `pow2WeightedSum()`
-
-### Known Issues
-
-- Small L values (1,2,3) fail in spend proofs
-- Test vectors incomplete (waiting on spec)
-- `Buffer.from()` usage in spend.ts needs fix
+- TestDRNGForTestingOnly for deterministic proofs
+- Optional RNG injection for proverCommit/prove/proveBatchable
 
 ### Blocked
 
-- Interop testing: Needs Rust reference alignment
+- Spec test vector interop: Fiat-Shamir transcript mismatch with POC
+- Rust reference interop: Needs alignment
 
 ---
 
 ## Key Dependencies
 
-| Package         | Purpose                               |
-| --------------- | ------------------------------------- |
-| `@noble/curves` | Ristretto255, P-256, scalar/point ops |
-| `@noble/hashes` | SHAKE128, SHA-512                     |
-| `cbor2`         | CBOR encoding (old API)               |
-| `fast-check`    | Property-based testing                |
-
----
-
-## Panel Reviews
-
-| Persona                   | Focus                                     |
-| ------------------------- | ----------------------------------------- |
-| IETF Security AD          | Spec compliance, security properties      |
-| CF Distinguished Engineer | Production-readiness, Workers constraints |
-| Crypto Library Maintainer | noble-curves patterns, constant-time      |
-| ACT API Consumer          | Usability, ergonomics                     |
-
-See `docs/reviewers/` for checklists.
+| Package         | Purpose                                          |
+| --------------- | ------------------------------------------------ |
+| `@noble/curves` | Ristretto255, P-256, BLS12-381, scalar/point ops |
+| `@noble/hashes` | SHAKE128, SHA-512                                |
+| `cbor2`         | CBOR encoding (old API)                          |
+| `fast-check`    | Property-based testing                           |

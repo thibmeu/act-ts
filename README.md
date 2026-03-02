@@ -113,17 +113,19 @@ docs/
 
 | Package      | Status                         | Tests       |
 | ------------ | ------------------------------ | ----------- |
-| sigma-proofs | Complete                       | 112 passing |
-| act-ts       | vnext (sigma-draft-compliance) | 124 passing |
+| sigma-proofs | Complete                       | 119 passing |
+| act-ts       | vnext (sigma-draft-compliance) | 121 passing |
 
 ### Roadmap
 
 - [x] sigma-proofs: LinearRelation, SchnorrProof, NISigmaProtocol
 - [x] sigma-proofs: SHAKE128 Fiat-Shamir (draft-irtf-cfrg-fiat-shamir-01)
+- [x] sigma-proofs: BLS12-381 G1 ciphersuite
 - [x] act-ts: Issuance, spending, range proofs (current draft)
 - [x] act-ts: vnext with algebraic range proofs (replacing CDS OR-proofs)
 - [x] act-ts: TLS wire format encoding (replacing CBOR)
 - [x] act-ts: Horner optimization for pow2-weighted sums
+- [ ] sigma-proofs: Spec test vector interop (transcript alignment with POC)
 - [ ] act-ts: Interop testing with Rust reference implementation
 
 ## Security Considerations
@@ -140,10 +142,6 @@ This software has not been audited. Please use at your sole discretion. With thi
 - **Not quantum-resistant**: Based on discrete logarithm assumptions
 - **Draft specifications**: Protocol may change before standardization
 - **No constant-time guarantees**: JavaScript runtime limitations (see [@noble/curves documentation](https://github.com/paulmillr/noble-curves#security))
-
-### Reporting Vulnerabilities
-
-If you discover a security vulnerability, please report it via GitHub Security Advisories or contact the maintainers directly. Do not open public issues for security vulnerabilities.
 
 ## Related Projects
 
