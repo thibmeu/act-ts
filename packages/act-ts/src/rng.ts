@@ -26,34 +26,48 @@ export class WebCryptoPRNG implements PRNG {
 }
 
 /**
- * Deterministic PRNG for testing, using SHAKE128.
+ * Domain separator for test DRNG (matches sigma-proofs TestDRNGForTestingOnly).
+ */
+const TEST_DRNG_IV = (() => {
+  const label = new TextEncoder().encode('sigma-proofs/TestDRNG/SHAKE128');
+  const result = new Uint8Array(64);
+  result.set(label);
+  return result;
+})();
+
+/**
+ * Deterministic PRNG for testing, using continuous SHAKE128 XOF squeeze.
  *
- * Matches the spec's SeededPRNG (Appendix B):
- *   state = SHAKE128("")
- *   state.absorb(seed)
- *   randomBytes(n) = state.squeeze(n)
+ * Aligned with sigma-proofs TestDRNGForTestingOnly for interop:
+ * - Uses same domain separator: "sigma-proofs/TestDRNG/SHAKE128" (padded to 64 bytes)
+ * - Uses continuous squeeze with offset tracking (not counter mode)
  *
  * WARNING: Only use for testing! Not cryptographically secure for production.
  */
 export class SeededPRNGForTestingOnly implements PRNG {
-  private counter: number = 0;
-  private readonly seed: Uint8Array;
+  private readonly hasher: ReturnType<typeof shake128.create>;
+  private squeezeOffset = 0;
 
   constructor(seed: Uint8Array) {
-    this.seed = seed;
+    if (seed.length !== 32) {
+      throw new Error('SeededPRNGForTestingOnly seed must be exactly 32 bytes');
+    }
+    // Initialize with domain separator padded to SHAKE128 rate (168 bytes)
+    const initialBlock = new Uint8Array(168);
+    initialBlock.set(TEST_DRNG_IV);
+    this.hasher = shake128.create({});
+    this.hasher.update(initialBlock);
+    // Absorb seed
+    this.hasher.update(seed);
   }
 
   randomBytes(n: number): Uint8Array {
-    // SHAKE128 is an XOF, so we can squeeze arbitrary amounts
-    // We use counter to ensure each call produces unique output
-    const counterBytes = new Uint8Array(4);
-    new DataView(counterBytes.buffer).setUint32(0, this.counter++, true);
-
-    const input = new Uint8Array(this.seed.length + 4);
-    input.set(this.seed);
-    input.set(counterBytes, this.seed.length);
-
-    return shake128(input, { dkLen: n });
+    // Continuous squeeze: get bytes from squeezeOffset to squeezeOffset + n
+    const end = this.squeezeOffset + n;
+    const full = this.hasher.clone().xof(end);
+    const result = full.subarray(this.squeezeOffset, end);
+    this.squeezeOffset = end;
+    return result;
   }
 }
 
