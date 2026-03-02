@@ -4,3 +4,4 @@
 
 export { Ristretto255Group, ristretto255 } from './ristretto255.js';
 export { P256Group, p256 } from './p256.js';
+export { BLS12381Group, bls12_381_g1 } from './bls12-381.js';

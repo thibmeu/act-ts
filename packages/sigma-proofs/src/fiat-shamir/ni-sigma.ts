@@ -24,7 +24,10 @@ export interface NIOptions {
    * Protocol identifier for domain separation (64 bytes).
    *
    * Defaults to "ietf sigma proof linear relation" + 32 zero bytes.
-   * Override this for application-specific domain separation.
+   * For spec compliance with test vectors, use ciphersuite-specific IDs like:
+   * - "sigma-proofs_Shake128_ristretto255" for ristretto255
+   * - "sigma-proofs_Shake128_P256" for P-256
+   * - "sigma-proofs_Shake128_BLS12381" for BLS12-381
    */
   protocolId?: Uint8Array;
 }
@@ -50,25 +53,15 @@ export interface NIProofBatchable {
 }
 
 /**
- * I2OSP: Integer to Octet String Primitive (RFC 8017).
- * Encodes as big-endian.
+ * Session ID IV for hashing arbitrary session strings.
+ * Per draft-irtf-cfrg-fiat-shamir-01 Section 5.1.
  */
-function i2osp(value: number, length: number): Uint8Array {
-  const result = new Uint8Array(length);
-  const view = new DataView(result.buffer);
-  if (length === 4) {
-    view.setUint32(0, value, false); // big-endian
-  } else if (length === 2) {
-    view.setUint16(0, value, false);
-  } else {
-    // Fallback for other lengths
-    for (let i = length - 1; i >= 0 && value > 0; i--) {
-      result[i] = value & 0xff;
-      value >>>= 8;
-    }
-  }
+const SESSION_ID_IV = (() => {
+  const prefix = asciiToBytes('fiat-shamir/session-id');
+  const result = new Uint8Array(64);
+  result.set(prefix);
   return result;
-}
+})();
 
 /**
  * Default protocol ID matching sigma-rs/sigma-hs.
@@ -83,26 +76,51 @@ const DEFAULT_PROTOCOL_ID = (() => {
 })();
 
 /**
- * Initialize a Fiat-Shamir sponge per sigma-rs/sigma-hs.
+ * Compute a fixed-size session ID from arbitrary-length session bytes.
  *
- * 1. Use protocolId directly as the sponge IV
- * 2. Absorb length-prefixed sessionId
- * 3. Absorb length-prefixed instanceLabel
+ * Per draft-irtf-cfrg-fiat-shamir-01 Section 5.1:
+ * - Hash session through sponge with IV "fiat-shamir/session-id".ljust(64)
+ * - Return 0x00 * 32 || squeeze(32) = 64 bytes
+ *
+ * @param session - Arbitrary session bytes
+ * @returns 64-byte fixed-size session ID
+ */
+function computeSessionId(session: Uint8Array): Uint8Array {
+  const sessionHashState = new Shake128Sponge(SESSION_ID_IV);
+  sessionHashState.absorb(session);
+  const sessionHash = sessionHashState.squeeze(32);
+
+  // Prepend 32 zero bytes
+  const result = new Uint8Array(64);
+  result.set(sessionHash, 32); // zeros at [0..31], hash at [32..63]
+  return result;
+}
+
+/**
+ * Initialize a Fiat-Shamir sponge per draft-irtf-cfrg-fiat-shamir-01 Section 5.
+ *
+ * 1. Use protocolId as the sponge IV
+ * 2. Compute fixed-size session ID from session and absorb it
+ * 3. Absorb instance label WITHOUT length prefix (must be prefix-free encoding)
  *
  * @param protocolId - Protocol identifier (64 bytes)
- * @param sessionId - Session identifier
- * @param instanceLabel - Canonical instance label from LinearRelation
+ * @param session - Arbitrary-length session bytes
+ * @param instanceLabel - Canonical instance label from LinearRelation (prefix-free)
  */
 function initializeSponge(
   protocolId: Uint8Array,
-  sessionId: Uint8Array,
+  session: Uint8Array,
   instanceLabel: Uint8Array
 ): Shake128Sponge {
   const sponge = new Shake128Sponge(protocolId);
-  // Absorb length-prefixed session ID (big-endian length per sigma-hs)
-  sponge.absorb(concat(i2osp(sessionId.length, 4), sessionId));
-  // Absorb length-prefixed instance label
-  sponge.absorb(concat(i2osp(instanceLabel.length, 4), instanceLabel));
+
+  // Compute and absorb fixed-size session ID
+  const sessionId = computeSessionId(session);
+  sponge.absorb(sessionId);
+
+  // Absorb instance label WITHOUT length prefix - encoding is prefix-free
+  sponge.absorb(instanceLabel);
+
   return sponge;
 }
 

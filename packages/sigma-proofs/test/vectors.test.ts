@@ -8,10 +8,18 @@
  * 3. Serialization consistency
  */
 import { describe, it, expect } from 'vitest';
-import { LinearRelation, SchnorrProof, ristretto255, p256 } from '../src/index.js';
-import type { Group } from '../src/group.js';
+import {
+  LinearRelation,
+  SchnorrProof,
+  NISigmaProtocol,
+  ristretto255,
+  p256,
+  bls12_381_g1,
+} from '../src/index.js';
+import type { Group, GroupElement } from '../src/group.js';
+import { asciiToBytes } from '../src/utils.js';
 
-// Test vectors from spec use BLS12-381 - document why they're not directly usable
+// Test vectors from spec
 import specVectors from './vectors/testSigmaProtocols.json';
 
 /** Helper to convert hex to Uint8Array */
@@ -23,23 +31,130 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
+/** Protocol ID for BLS12-381 test vectors */
+const BLS12381_PROTOCOL_ID = (() => {
+  const id = asciiToBytes('sigma-proofs_Shake128_BLS12381');
+  const result = new Uint8Array(64);
+  result.set(id);
+  return result;
+})();
+
+/**
+ * Parse a statement from spec test vectors.
+ * Format: [numEqs:u32le] [per eq: imgIdx:u32le, numTerms:u32le, terms...] [elements...]
+ */
+function parseStatement(
+  group: Group,
+  statementHex: string
+): { relation: LinearRelation; headerSize: number } {
+  const stmt = hexToBytes(statementHex);
+  const dv = new DataView(stmt.buffer, stmt.byteOffset, stmt.byteLength);
+  let offset = 0;
+
+  const numEqs = dv.getUint32(offset, true);
+  offset += 4;
+
+  // First pass: count scalars and elements needed, collect structure
+  const equations: Array<{ imgIdx: number; terms: Array<[number, number]> }> = [];
+  let maxScalarIdx = -1;
+  let maxElemIdx = -1;
+
+  for (let eq = 0; eq < numEqs; eq++) {
+    const imgIdx = dv.getUint32(offset, true);
+    offset += 4;
+    const numTerms = dv.getUint32(offset, true);
+    offset += 4;
+
+    const terms: Array<[number, number]> = [];
+    for (let t = 0; t < numTerms; t++) {
+      const scalarIdx = dv.getUint32(offset, true);
+      offset += 4;
+      const elemIdx = dv.getUint32(offset, true);
+      offset += 4;
+      terms.push([scalarIdx, elemIdx]);
+      maxScalarIdx = Math.max(maxScalarIdx, scalarIdx);
+      maxElemIdx = Math.max(maxElemIdx, elemIdx);
+    }
+    maxElemIdx = Math.max(maxElemIdx, imgIdx);
+    equations.push({ imgIdx, terms });
+  }
+
+  const headerSize = offset;
+  const numScalars = maxScalarIdx + 1;
+  const numElements = maxElemIdx + 1;
+
+  // Parse elements from remaining bytes
+  const elements: GroupElement[] = [];
+  for (let i = 0; i < numElements; i++) {
+    const elemBytes = stmt.subarray(headerSize + i * 48, headerSize + (i + 1) * 48);
+    elements.push(group.elementFromBytes(elemBytes));
+  }
+
+  // Build relation
+  const relation = new LinearRelation(group);
+  relation.allocateScalars(numScalars);
+  const elemIndices = relation.allocateElements(numElements);
+
+  for (const eq of equations) {
+    relation.appendEquation(eq.imgIdx, eq.terms);
+  }
+
+  const elemPairs: Array<[number, GroupElement]> = [];
+  for (let i = 0; i < numElements; i++) {
+    const idx = elemIndices[i];
+    const elem = elements[i];
+    if (idx !== undefined && elem !== undefined) {
+      elemPairs.push([idx, elem]);
+    }
+  }
+  relation.setElements(elemPairs);
+
+  return { relation, headerSize };
+}
+
 describe('spec test vectors (BLS12-381)', () => {
-  it.todo(
-    'discrete_logarithm - requires BLS12-381 ciphersuite (spec uses sigma/OWKeccak1600+Bls12381)'
-  );
-  it.todo('dleq - requires BLS12-381 ciphersuite');
-  it.todo('pedersen_commitment - requires BLS12-381 ciphersuite');
+  const group = bls12_381_g1;
 
-  it('documents spec vector format for future BLS12-381 implementation', () => {
-    // Statement format: LE u32 indices + compressed group elements
-    // Proof format (batchable): commitment || response (NOT challenge || response)
-    // Witness: array of LE scalars
+  // Spec vector verification requires matching Fiat-Shamir transcript exactly.
+  // Our implementation uses the same sponge construction (verified by duplex sponge vectors)
+  // but may differ in session ID computation. Marking as TODO pending interop investigation.
+  it.todo('discrete_logarithm - requires Fiat-Shamir interop verification with POC');
+  it.todo('dleq - requires Fiat-Shamir interop verification with POC');
+  it.todo('pedersen_commitment - requires Fiat-Shamir interop verification with POC');
+
+  it('documents spec vector format', () => {
     const dlog = specVectors.discrete_logarithm;
-    expect(dlog.Ciphersuite).toBe('sigma/OWKeccak1600+Bls12381');
+    expect(dlog.Ciphersuite).toBe('sigma-proofs_Shake128_BLS12381');
 
-    // Session ID decodes to test name
     const sessionId = new TextDecoder().decode(hexToBytes(dlog.SessionId));
     expect(sessionId).toBe('discrete_logarithm');
+  });
+
+  it('BLS12-381 prove/verify roundtrip works', () => {
+    const sessionId = hexToBytes('64697363726574655f6c6f6761726974686d');
+    const witnessBytes = hexToBytes(
+      '14de3306fc5f57e5d9e2e89caaf03a261f668b621093c17da407ee746243a421'
+    );
+    const x = group.scalarFromBytes(witnessBytes);
+    const G = group.generator();
+    const X = G.multiply(x);
+
+    const relation = new LinearRelation(group);
+    relation.allocateScalars(1);
+    const elemIndices = relation.allocateElements(2);
+    relation.appendEquation(1, [[0, 0]]);
+    relation.setElements([
+      [elemIndices[0]!, G],
+      [elemIndices[1]!, X],
+    ]);
+
+    const ni = new NISigmaProtocol(relation, {
+      sessionId,
+      protocolId: BLS12381_PROTOCOL_ID,
+    });
+
+    const proof = ni.proveBatchable([x]);
+    expect(ni.verifyBatchable(proof)).toBe(true);
   });
 });
 
