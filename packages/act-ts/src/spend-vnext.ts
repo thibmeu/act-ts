@@ -231,8 +231,6 @@ function buildSpendRelation(
   const one = getOne(group);
 
   // H1' = G + k*H2 + ctx*H4 (public, derived from k and ctx in proof)
-  // Actually H1' uses the ctx from token, but k is revealed in the proof
-  // We compute it here for both prover and verifier
   const sScalar = group.scalarFromBigint(s);
 
   // K' = sum(2^j * Com[j]) using Horner's method
@@ -241,173 +239,148 @@ function buildSpendRelation(
   // ComTotal = s*H1 + K'
   // Handle s=0 case (multiply by zero scalar not allowed)
   const ComTotal = s === 0n ? KPrime : H1.multiply(sScalar).add(KPrime);
+  const H1Prime = group.msm([one, k, ctx], [G, H2, H4]); // H1' = G + k*H2 + ctx*H4
 
   const relation = new LinearRelation(group);
 
-  // Scalar variables:
-  // [e, r2, r3, c, r, b[0..L-1], sCom[0..L-1], s2[0..L-1], kStar, kStar2]
-  // where kStar2 = (1 - b[0]) * kStar (needed for binary constraint on Com[0])
-  // Total: 5 + 3*L + 2 = 7 + 3*L
-  const numScalars = 7 + 3 * L;
-  const scalarVars = relation.allocateScalars(numScalars);
+  // === Scalar allocation (matches Rust order) ===
+  // Eq1: [e, r2]
+  // Eq2: [r3, c, r]
+  // Range proof: b[0..L-1], sCom[0..L-1], s2[0..L-1], kStar, kStar2
+  // Total: 2 + 3 + 3*L + 2 = 7 + 3*L (same count, different order)
+  const eq1Scalars = relation.allocateScalars(2);
+  const eVar = eq1Scalars[0]!;
+  const r2Var = eq1Scalars[1]!;
 
-  const eVar = scalarVars[0]!;
-  const r2Var = scalarVars[1]!;
-  const r3Var = scalarVars[2]!;
-  const cVar = scalarVars[3]!;
-  const rVar = scalarVars[4]!;
-  const bVars: number[] = [];
-  const sComVars: number[] = [];
-  const s2Vars: number[] = [];
+  const eq2Scalars = relation.allocateScalars(3);
+  const r3Var = eq2Scalars[0]!;
+  const cVar = eq2Scalars[1]!;
+  const rVar = eq2Scalars[2]!;
 
-  for (let j = 0; j < L; j++) {
-    bVars.push(scalarVars[5 + j]!);
-    sComVars.push(scalarVars[5 + L + j]!);
-    s2Vars.push(scalarVars[5 + 2 * L + j]!);
-  }
-  const kStarVar = scalarVars[5 + 3 * L]!;
-  const kStar2Var = scalarVars[6 + 3 * L]!;
+  // Range proof scalars
+  const bVars = relation.allocateScalars(L);
+  const sComVars = relation.allocateScalars(L);
+  const s2Vars = relation.allocateScalars(L);
+  const kstarScalars = relation.allocateScalars(2);
+  const kStarVar = kstarScalars[0]!;
+  const kStar2Var = kstarScalars[1]!;
 
-  // Element allocation:
-  // Fixed elements: G, H1, H2, H3, negAPrime, BBar, ABar, negH1, negH3, H1Prime, ComTotal
-  // Variable elements: Com[0..L-1]
-  // Total: 11 + L
-  const elemVars = relation.allocateElements(11 + L);
+  const scalarVarCount = 7 + 3 * L;
 
-  const gIdx = elemVars[0]!;
-  const h1Idx = elemVars[1]!;
-  const h2Idx = elemVars[2]!;
-  const h3Idx = elemVars[3]!;
-  const negAPrimeIdx = elemVars[4]!;
-  const bBarIdx = elemVars[5]!;
-  const aBarIdx = elemVars[6]!;
-  const negH1Idx = elemVars[7]!;
-  const negH3Idx = elemVars[8]!;
-  const h1PrimeIdx = elemVars[9]!;
-  const comTotalIdx = elemVars[10]!;
+  // === Element allocation (matches Rust order exactly) ===
 
-  const comIndices: number[] = [];
-  for (let j = 0; j < L; j++) {
-    comIndices.push(elemVars[11 + j]!);
-  }
+  // Eq1: allocate 3 elements [neg_a_prime, b_bar, a_bar]
+  const eq1Elems = relation.allocateElements(3);
+  const negAPrimeIdx = eq1Elems[0]!;
+  const bBarIdx = eq1Elems[1]!;
+  const aBarIdx = eq1Elems[2]!;
 
-  // Set element values
-  const elementPairs: Array<[number, GroupElement]> = [
-    [gIdx, G],
-    [h1Idx, H1],
-    [h2Idx, H2],
-    [h3Idx, H3],
-    [negAPrimeIdx, APrime.negate()],
-    [bBarIdx, BBar],
-    [aBarIdx, ABar],
-    [negH1Idx, H1.negate()],
-    [negH3Idx, H3.negate()],
-    [h1PrimeIdx, group.msm([one, k, ctx], [G, H2, H4])], // H1' = G + k*H2 + ctx*H4
-    [comTotalIdx, ComTotal],
-  ];
-
-  for (let j = 0; j < L; j++) {
-    elementPairs.push([comIndices[j]!, Com[j]!]);
-  }
-
-  relation.setElements(elementPairs);
-
-  // Equation 1: BBS signature verification
-  // ABar = e * (-A') + r2 * BBar
+  // Equation 1: ABar = e * (-A') + r2 * BBar
   relation.appendEquation(aBarIdx, [
     [eVar, negAPrimeIdx],
     [r2Var, bBarIdx],
   ]);
+  relation.setElements([
+    [negAPrimeIdx, APrime.negate()],
+    [bBarIdx, BBar],
+    [aBarIdx, ABar],
+  ]);
 
-  // Equation 2: Credential structure (simplified)
-  // H1' = r3 * BBar + c * (-H1) + r * (-H3)
-  // This proves knowledge of c and r
+  // Eq2: allocate 3 elements [neg_h1, neg_h3, h1_prime]
+  const eq2Elems = relation.allocateElements(3);
+  const negH1Idx = eq2Elems[0]!;
+  const negH3Idx = eq2Elems[1]!;
+  const h1PrimeIdx = eq2Elems[2]!;
+
+  // Equation 2: H1' = r3 * BBar + c * (-H1) + r * (-H3)
   relation.appendEquation(h1PrimeIdx, [
     [r3Var, bBarIdx],
     [cVar, negH1Idx],
     [rVar, negH3Idx],
   ]);
+  relation.setElements([
+    [negH1Idx, H1.negate()],
+    [negH3Idx, H3.negate()],
+    [h1PrimeIdx, H1Prime],
+  ]);
 
-  // Equations for range proof: 2*L equations
-  // For each bit j:
-  //   Opening: Com[j] = b[j]*H1 + kStar*H2 + sCom[j]*H3 (j=0)
-  //            Com[j] = b[j]*H1 + sCom[j]*H3 (j>0)
-  //   Binary:  Com[j] = b[j]*Com[j] + s2[j]*H3
+  // Range proof: allocate shared elements [h1_rp, h2_rp, h3_rp]
+  const rpElems = relation.allocateElements(3);
+  const h1RpIdx = rpElems[0]!;
+  const h2RpIdx = rpElems[1]!;
+  const h3RpIdx = rpElems[2]!;
+  relation.setElements([
+    [h1RpIdx, H1],
+    [h2RpIdx, H2],
+    [h3RpIdx, H3],
+  ]);
 
+  // Allocate Com element variables (one at a time, like Rust's allocate_element_with)
+  const comIndices: number[] = [];
   for (let j = 0; j < L; j++) {
+    const comIdx = relation.allocateElements(1)[0]!;
+    comIndices.push(comIdx);
+    relation.setElements([[comIdx, Com[j]!]]);
+  }
+
+  // Bit 0: opening  Com[0] = b[0]*H1 + kstar*H2 + s_com[0]*H3
+  relation.appendEquation(comIndices[0]!, [
+    [bVars[0]!, h1RpIdx],
+    [kStarVar, h2RpIdx],
+    [sComVars[0]!, h3RpIdx],
+  ]);
+  // Bit 0: binary  Com[0] = b[0]*Com[0] + k2*H2 + s2[0]*H3
+  relation.appendEquation(comIndices[0]!, [
+    [bVars[0]!, comIndices[0]!],
+    [kStar2Var, h2RpIdx],
+    [s2Vars[0]!, h3RpIdx],
+  ]);
+
+  // Bits 1..L-1
+  for (let j = 1; j < L; j++) {
     const comIdx = comIndices[j]!;
     const bVar = bVars[j]!;
     const sComVar = sComVars[j]!;
     const s2Var = s2Vars[j]!;
 
-    // Opening equation
-    if (j === 0) {
-      relation.appendEquation(comIdx, [
-        [bVar, h1Idx],
-        [kStarVar, h2Idx],
-        [sComVar, h3Idx],
-      ]);
-    } else {
-      relation.appendEquation(comIdx, [
-        [bVar, h1Idx],
-        [sComVar, h3Idx],
-      ]);
-    }
-
-    // Binary constraint
-    // For j=0: Com[0] = b[0]*Com[0] + kStar2*H2 + s2[0]*H3
-    //   where kStar2 = (1-b[0])*kStar handles the extra H2 term
-    // For j>0: Com[j] = b[j]*Com[j] + s2[j]*H3
-    if (j === 0) {
-      relation.appendEquation(comIdx, [
-        [bVar, comIdx],
-        [kStar2Var, h2Idx],
-        [s2Var, h3Idx],
-      ]);
-    } else {
-      relation.appendEquation(comIdx, [
-        [bVar, comIdx],
-        [s2Var, h3Idx],
-      ]);
-    }
+    // Opening: Com[j] = b[j]*H1 + s_com[j]*H3
+    relation.appendEquation(comIdx, [
+      [bVar, h1RpIdx],
+      [sComVar, h3RpIdx],
+    ]);
+    // Binary: Com[j] = b[j]*Com[j] + s2[j]*H3
+    relation.appendEquation(comIdx, [
+      [bVar, comIdx],
+      [s2Var, h3RpIdx],
+    ]);
   }
 
-  // Equation for commitment total consistency (final equation: 2L+3)
-  // ComTotal = c*H1 + kStar*H2 + Σ sCom[j]*(H3*2^j)
-  //
-  // This equation ties together:
-  // - c (the token's credit balance, proven in eq 2)
-  // - kStar (the new nullifier randomness, bound in Com[0])
-  // - sCom[j] (the randomizers, bound in each Com[j])
-  //
-  // Since ComTotal = s*H1 + KPrime where KPrime = sum(2^j*Com[j]),
-  // and each Com[j] = b[j]*H1 + ... (opening) with b[j] being bits of (c-s),
-  // this verifies the consistency between s and c via the range proof.
+  // === Consistency equation: ComTotal = c*H1 + kstar*H2 + Σ s_com[j]*(H3*2^j) ===
 
-  // Allocate additional elements for consistency equation
-  // We need separate H1, H2 vars and H3*2^j coefficients
-  const consistencyH1Idx = relation.allocateElements(1)[0]!;
-  const consistencyH2Idx = relation.allocateElements(1)[0]!;
-
+  // Allocate 3 elements [h1_con, h2_con, com_total]
+  const conElems = relation.allocateElements(3);
+  const h1ConIdx = conElems[0]!;
+  const h2ConIdx = conElems[1]!;
+  const comTotalIdx = conElems[2]!;
   relation.setElements([
-    [consistencyH1Idx, H1],
-    [consistencyH2Idx, H2],
+    [h1ConIdx, H1],
+    [h2ConIdx, H2],
+    [comTotalIdx, ComTotal],
   ]);
 
-  // Build the consistency equation: ComTotal = c*H1 + kStar*H2 + Σ sCom[j]*(H3*2^j)
-  const coefficients: Array<[number, number]> = [
-    [cVar, consistencyH1Idx],
-    [kStarVar, consistencyH2Idx],
-  ];
-
-  // Add the sCom[j]*(H3*2^j) terms
-  // Use doubling chain instead of scalar multiplication: H3*2^j = 2*(H3*2^(j-1))
-  const h3Powers: GroupElement[] = [H3]; // h3Powers[0] = H3 = H3*2^0
+  // Build H3*2^j powers using doubling chain
+  const h3Powers: GroupElement[] = [H3];
   for (let j = 1; j < L; j++) {
     const prev = h3Powers[j - 1];
     if (!prev) throw new Error(`Missing h3Powers at index ${j - 1}`);
-    h3Powers.push(prev.add(prev)); // H3*2^j = 2 * H3*2^(j-1)
+    h3Powers.push(prev.add(prev));
   }
+
+  // Build consistency equation terms
+  const coefficients: Array<[number, number]> = [
+    [cVar, h1ConIdx],
+    [kStarVar, h2ConIdx],
+  ];
 
   for (let j = 0; j < L; j++) {
     const h3Times2j = h3Powers[j];
@@ -421,7 +394,7 @@ function buildSpendRelation(
 
   return {
     relation,
-    scalarVarCount: numScalars,
+    scalarVarCount,
     eVar,
     r2Var,
     r3Var,
@@ -696,6 +669,33 @@ export function verifySpendProof(params: SystemParams, sk: PrivateKey, proof: Sp
   if (!verifier.verify(parsedProof)) {
     throw new ACTError('Invalid spend proof', ACTErrorCode.InvalidSpendProof);
   }
+}
+
+/**
+ * Get the instance label for a spend proof (for debugging/interop testing).
+ *
+ * This returns the canonical instance label that is absorbed into the
+ * Fiat-Shamir sponge during proof generation and verification.
+ *
+ * @param params - System parameters
+ * @param sk - Issuer's private key
+ * @param proof - Spend proof from client
+ * @returns The instance label as bytes
+ */
+export function getSpendInstanceLabel(
+  params: SystemParams,
+  sk: PrivateKey,
+  proof: SpendProof
+): Uint8Array {
+  const { k, s, ctx, APrime, BBar, Com } = proof;
+
+  // Compute A_bar = A' * sk.x (issuer's view)
+  const ABar = APrime.multiply(sk.x);
+
+  // Build relation (same as prover)
+  const { relation } = buildSpendRelation(params, APrime, BBar, ABar, Com, k, ctx, s);
+
+  return relation.getInstanceLabel();
 }
 
 /**

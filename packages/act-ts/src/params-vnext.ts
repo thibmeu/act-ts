@@ -39,12 +39,14 @@ function asciiToBytes(str: string): Uint8Array {
 }
 
 /**
- * Encode counter as 4-byte little-endian
+ * Encode counter as single byte (u8)
+ * Matches Rust implementation which uses [counter] as a single byte array
  */
-function u32le(value: number): Uint8Array {
-  const result = new Uint8Array(4);
-  new DataView(result.buffer).setUint32(0, value, true);
-  return result;
+function u8(value: number): Uint8Array {
+  if (value < 0 || value > 255) {
+    throw new ACTError(`Counter value out of range: ${value}`, ACTErrorCode.InvalidParameter);
+  }
+  return new Uint8Array([value]);
 }
 
 /**
@@ -77,13 +79,18 @@ export function setGenerators(
   const maxIterations = 256; // Prevent infinite loop (collision extremely unlikely)
 
   for (let ctr = 0; ctr < maxIterations; ctr++) {
-    const ctrBytes = u32le(ctr);
+    const ctrBytes = u8(ctr);
 
-    // Generate candidates
-    const H1 = group.hashToElement(concat(asciiToBytes('GenH1'), ctrBytes, domainSeparator));
-    const H2 = group.hashToElement(concat(asciiToBytes('GenH2'), ctrBytes, domainSeparator));
-    const H3 = group.hashToElement(concat(asciiToBytes('GenH3'), ctrBytes, domainSeparator));
-    const H4 = group.hashToElement(concat(asciiToBytes('GenH4'), ctrBytes, domainSeparator));
+    // DST for hash-to-group per ACT(ristretto255, SHAKE128) suite
+    // Must match Rust: format!("HashToGroup-{}", domain_separator)
+    const dst = concat(asciiToBytes('HashToGroup-'), domainSeparator);
+
+    // Generate candidates - msg format: "GenHN" || counter || domain_separator
+    // Uses hash_to_ristretto255(msg, dst) internally
+    const H1 = group.hashToElement(concat(asciiToBytes('GenH1'), ctrBytes, domainSeparator), dst);
+    const H2 = group.hashToElement(concat(asciiToBytes('GenH2'), ctrBytes, domainSeparator), dst);
+    const H3 = group.hashToElement(concat(asciiToBytes('GenH3'), ctrBytes, domainSeparator), dst);
+    const H4 = group.hashToElement(concat(asciiToBytes('GenH4'), ctrBytes, domainSeparator), dst);
 
     // Check all 5 are distinct (set accumulator approach per armfazh suggestion)
     const elements = [G0, H1, H2, H3, H4];

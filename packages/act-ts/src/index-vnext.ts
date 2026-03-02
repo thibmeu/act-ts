@@ -64,6 +64,7 @@ export {
   issueRefund,
   constructRefundToken,
   verifyAndRefund,
+  getSpendInstanceLabel,
 } from './spend-vnext.js';
 
 // TLS wire format encoding

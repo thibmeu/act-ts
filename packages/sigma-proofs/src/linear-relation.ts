@@ -207,28 +207,44 @@ export class LinearRelation {
     const lm = this.linearMap;
     const orig = lm.groupElements;
 
-    // Mapping from original index to canonical index
-    const mapping = new Map<number, number>();
     // Canonical element list
+    // Matches Rust's CanonicalLinearRelation behavior:
+    // - RHS elements are deduplicated by original index (via WeightedGroupCache)
+    // - Image elements ALWAYS get fresh canonical indices (not deduplicated)
     const canonElems: GroupElement[] = [];
 
-    // Remap an original index to canonical, appending if unseen
-    const remap = (origIdx: number): number => {
-      const existing = mapping.get(origIdx);
+    // Maps original element index -> canonical index (for RHS elements only)
+    const rhsCache = new Map<number, number>();
+
+    // Get or create a canonical index for an RHS element (with deduplication)
+    const getOrCreateRhs = (origIdx: number): number => {
+      const existing = rhsCache.get(origIdx);
       if (existing !== undefined) {
         return existing;
       }
-      const newIdx = canonElems.length;
-      mapping.set(origIdx, newIdx);
       const elem = orig[origIdx];
       if (elem === undefined) {
         throw new Error(`Invalid element index ${origIdx}`);
       }
+      const newIdx = canonElems.length;
+      canonElems.push(elem);
+      rhsCache.set(origIdx, newIdx);
+      return newIdx;
+    };
+
+    // Allocate a fresh canonical index for an image element (no deduplication)
+    const allocateImage = (origIdx: number): number => {
+      const elem = orig[origIdx];
+      if (elem === undefined) {
+        throw new Error(`Invalid element index ${origIdx}`);
+      }
+      const newIdx = canonElems.length;
       canonElems.push(elem);
       return newIdx;
     };
 
     // Process each equation, building canonical structure
+    // Order: RHS terms first, then image (matches Rust processing order)
     const canonEqs: Array<{ imgIdx: number; terms: Array<[number, number]> }> = [];
 
     for (let eqIdx = 0; eqIdx < lm.linearCombinations.length; eqIdx++) {
@@ -237,7 +253,7 @@ export class LinearRelation {
         throw new Error(`Invalid equation index ${eqIdx}`);
       }
 
-      // Map each RHS term's element index
+      // Get canonical indices for RHS term elements (with deduplication)
       const terms: Array<[number, number]> = [];
       for (let tIdx = 0; tIdx < lc.elementIndices.length; tIdx++) {
         const origElemIdx = lc.elementIndices[tIdx];
@@ -245,18 +261,18 @@ export class LinearRelation {
         if (origElemIdx === undefined || scalarIdx === undefined) {
           throw new Error('Invalid term indices');
         }
-        const newElemIdx = remap(origElemIdx);
-        terms.push([scalarIdx, newElemIdx]);
+        const canonIdx = getOrCreateRhs(origElemIdx);
+        terms.push([scalarIdx, canonIdx]);
       }
 
-      // Map the image element index
+      // Allocate fresh canonical index for image element (no deduplication)
       const origImgIdx = this.imageIndices[eqIdx];
       if (origImgIdx === undefined) {
         throw new Error(`Invalid image index for equation ${eqIdx}`);
       }
-      const newImgIdx = remap(origImgIdx);
+      const canonImgIdx = allocateImage(origImgIdx);
 
-      canonEqs.push({ imgIdx: newImgIdx, terms });
+      canonEqs.push({ imgIdx: canonImgIdx, terms });
     }
 
     // Serialize
