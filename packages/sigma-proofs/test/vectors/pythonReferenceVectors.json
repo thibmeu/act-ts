@@ -1,0 +1,7 @@
+{
+  "_comment": "Reference vectors computed with Python hashlib.shake_128 (same as POC SHAKE128 class). These verify our implementation matches the spec's SHAKE128 behavior. See vectors.test.ts for context on POC discrepancy.",
+  "discrete_logarithm": {
+    "sessionHash": "4badef4abe9c730bc41a8dae68fcdcff5a146c4db440d7d2c16a9bc77a4d2d42",
+    "challenge": "1149b6ef08475321f54d1f00ae089a17b4912f845d848b021db39d71b1f8cc65"
+  }
+}

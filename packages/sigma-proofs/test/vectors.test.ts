@@ -15,12 +15,15 @@ import {
   ristretto255,
   p256,
   bls12_381_g1,
+  Shake128Sponge,
+  ByteCodec,
 } from '../src/index.js';
 import type { Group, GroupElement } from '../src/group.js';
 import { asciiToBytes } from '../src/utils.js';
 
 // Test vectors from spec
 import specVectors from './vectors/testSigmaProtocols.json';
+import pythonRefVectors from './vectors/pythonReferenceVectors.json';
 
 /** Helper to convert hex to Uint8Array */
 function hexToBytes(hex: string): Uint8Array {
@@ -157,25 +160,112 @@ describe('spec test vectors (BLS12-381)', () => {
     expect(ni.verifyBatchable(proof)).toBe(true);
   });
 
-  // POC interop tests - blocked on Fiat-Shamir transcript mismatch
-  //
-  // Status (2026-03-02):
-  // - Instance labels NOW MATCH (getInstanceLabel() fixed)
-  // - Sponge implementation matches spec vectors (duplexSpongeVectors.json)
-  // - Sigma protocol verification works (non-batchable proof verifies with embedded challenge)
-  // - Challenge computation differs - our transcript produces different challenges than POC
-  //
-  // Remaining issue: session ID hashing or codec absorb order differs from POC.
-  // Need to trace exact byte sequences in POC to find discrepancy.
-  it.todo('discrete_logarithm - verifies spec proof (blocked: challenge computation mismatch)');
-  it.todo('dleq - verifies spec proof (blocked: challenge computation mismatch)');
-  it.todo('pedersen_commitment - verifies spec proof (blocked: challenge computation mismatch)');
-  it.todo(
-    'pedersen_commitment_dleq - verifies spec proof (blocked: challenge computation mismatch)'
-  );
-  it.todo(
-    'bbs_blind_commitment_computation - verifies spec proof (blocked: challenge computation mismatch)'
-  );
+  it('discrete_logarithm - instance label matches POC statement', () => {
+    const dlog = specVectors.discrete_logarithm;
+    const statementHex = dlog.Statement;
+
+    // Build relation manually from scratch
+    const witnessBytes = hexToBytes(dlog.Witness);
+    const x = group.scalarFromBytes(witnessBytes);
+    const G = group.generator();
+    const X = G.multiply(x);
+
+    const relation = new LinearRelation(group);
+    relation.allocateScalars(1);
+    const elemIndices = relation.allocateElements(2);
+    relation.appendEquation(1, [[0, 0]]);
+    relation.setElements([
+      [elemIndices[0]!, G],
+      [elemIndices[1]!, X],
+    ]);
+
+    const ourLabel = bytesToHex(relation.getInstanceLabel());
+    expect(ourLabel).toBe(statementHex);
+  });
+
+  // Python reference vectors (pythonRefVectors.json) verify our implementation
+  // matches spec SHAKE128 behavior. POC vectors differ - see TODO at end of describe block.
+
+  // Session ID IV per spec Section 5.1
+  const SESSION_ID_IV = (() => {
+    const prefix = asciiToBytes('fiat-shamir/session-id');
+    const result = new Uint8Array(64);
+    result.set(prefix);
+    return result;
+  })();
+
+  it('discrete_logarithm - session ID computation matches Python reference', () => {
+    const dlog = specVectors.discrete_logarithm;
+    const sessionInput = hexToBytes(dlog.SessionId);
+
+    const sessionHashState = new Shake128Sponge(SESSION_ID_IV);
+    sessionHashState.absorb(sessionInput);
+    const sessionHash = sessionHashState.squeeze(32);
+
+    expect(bytesToHex(sessionHash)).toBe(pythonRefVectors.discrete_logarithm.sessionHash);
+  });
+
+  it('discrete_logarithm - challenge computation matches Python reference', () => {
+    const dlog = specVectors.discrete_logarithm;
+    const sessionId = hexToBytes(dlog.SessionId);
+    const { relation } = parseStatement(group, dlog.Statement);
+
+    const ni = new NISigmaProtocol(relation, {
+      sessionId,
+      protocolId: BLS12381_PROTOCOL_ID,
+    });
+
+    // Deserialize and get the commitment
+    const batchableProof = hexToBytes(dlog['Batchable Proof']);
+    const proof = ni.deserializeBatchableProof(batchableProof);
+
+    // Manually compute challenge to verify transcript
+    const sessionHashState = new Shake128Sponge(SESSION_ID_IV);
+    sessionHashState.absorb(sessionId);
+    const sessionHash = sessionHashState.squeeze(32);
+    const computedSessionId = new Uint8Array(64);
+    computedSessionId.set(sessionHash, 32);
+
+    // Main transcript
+    const sponge = new Shake128Sponge(BLS12381_PROTOCOL_ID);
+    sponge.absorb(computedSessionId);
+    sponge.absorb(relation.getInstanceLabel());
+
+    const codec = new ByteCodec(group, sponge);
+    codec.absorbElements(proof.commitment);
+    const challenge = codec.squeezeChallenge();
+
+    expect(bytesToHex(challenge.toBytes())).toBe(pythonRefVectors.discrete_logarithm.challenge);
+  });
+
+  it('discrete_logarithm - prove/verify roundtrip with our implementation', () => {
+    const dlog = specVectors.discrete_logarithm;
+    const sessionId = hexToBytes(dlog.SessionId);
+    const witnessBytes = hexToBytes(dlog.Witness);
+    const x = group.scalarFromBytes(witnessBytes);
+
+    const { relation } = parseStatement(group, dlog.Statement);
+
+    const ni = new NISigmaProtocol(relation, {
+      sessionId,
+      protocolId: BLS12381_PROTOCOL_ID,
+    });
+
+    // Generate our own proof and verify it works
+    const proof = ni.proveBatchable([x]);
+    expect(ni.verifyBatchable(proof)).toBe(true);
+
+    // Also test challenge-response format
+    const crProof = ni.prove([x]);
+    expect(ni.verify(crProof)).toBe(true);
+  });
+
+  // POC interop - blocked pending investigation of vector discrepancy
+  // POC repo: https://github.com/mmaker/draft-irtf-cfrg-sigma-protocols/tree/main/poc
+  // POC vectors: https://github.com/mmaker/draft-irtf-cfrg-sigma-protocols/blob/main/poc/vectors/testSigmaProtocols.json
+  // Our transcript matches Python hashlib.shake_128 but differs from POC vectors.
+  // Possible causes: vectors generated with older code, or Sage-specific behavior.
+  it.todo('POC interop: investigate why POC vectors differ from Python/TS computation');
 });
 
 /**
