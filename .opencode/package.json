@@ -4,5 +4,8 @@
   "type": "module",
   "devDependencies": {
     "@opencode-ai/plugin": "latest"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "1.2.16"
   }
 }
