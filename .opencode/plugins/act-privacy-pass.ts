@@ -16,6 +16,9 @@ import { type Plugin, tool } from '@opencode-ai/plugin';
 // ACT token type identifier
 const ACT_TOKEN_TYPE = 0xe5ad;
 
+// Cache for ACT challenge detection (avoids double-probing)
+const actChallengeCache = new Map<string, boolean>();
+
 export const ACTPrivacyPassPlugin: Plugin = async ({ $, client }) => {
   const log = async (level: 'debug' | 'info' | 'warn' | 'error', message: string) => {
     await client.app.log({
@@ -34,35 +37,74 @@ export const ACTPrivacyPassPlugin: Plugin = async ({ $, client }) => {
   await log('info', 'ACT Privacy Pass plugin loaded');
 
   /**
-   * Check if a URL has an ACT challenge by probing with curl
+   * Check if a URL has an ACT challenge by probing with curl (cached)
    */
   const hasACTChallenge = async (url: string): Promise<boolean> => {
+    // Check cache first
+    const cached = actChallengeCache.get(url);
+    if (cached !== undefined) {
+      await log('debug', `ACT challenge cache hit for ${url}: ${cached}`);
+      return cached;
+    }
+
     const probe = await $`curl -sI ${url}`.quiet().nothrow();
-    if (probe.exitCode !== 0) return false;
+    if (probe.exitCode !== 0) {
+      actChallengeCache.set(url, false);
+      return false;
+    }
 
     const headers = probe.stdout.toString();
     const wwwAuth = headers.match(/WWW-Authenticate:\s*PrivateToken[^\r\n]+challenge="([^"]+)"/i);
-    if (!wwwAuth) return false;
+    if (!wwwAuth) {
+      actChallengeCache.set(url, false);
+      return false;
+    }
 
     // Decode challenge and check token type
     try {
       const challenge = wwwAuth[1];
       const bytes = Buffer.from(challenge.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
-      if (bytes.length < 2) return false;
+      if (bytes.length < 2) {
+        actChallengeCache.set(url, false);
+        return false;
+      }
       const tokenType = (bytes[0] << 8) | bytes[1];
-      return tokenType === ACT_TOKEN_TYPE;
+      const isACT = tokenType === ACT_TOKEN_TYPE;
+      actChallengeCache.set(url, isACT);
+      return isACT;
     } catch {
+      actChallengeCache.set(url, false);
       return false;
     }
   };
 
   /**
-   * Attempt ACT redemption for a URL
+   * Attempt ACT redemption for a URL with optional headers/method/body
    */
   const tryACTRedeem = async (
-    url: string
+    url: string,
+    options?: {
+      headers?: Record<string, string>;
+      method?: string;
+      body?: string;
+    }
   ): Promise<{ success: boolean; output?: string; error?: string }> => {
-    const result = await $`act redeem ${url}`.quiet().nothrow();
+    // Default to Accept: text/markdown for agent-friendly responses
+    const headers = { Accept: 'text/markdown', ...options?.headers };
+
+    // Build command args
+    const args: string[] = ['redeem', url];
+    for (const [key, value] of Object.entries(headers)) {
+      args.push('-H', `${key}: ${value}`);
+    }
+    if (options?.method) {
+      args.push('-X', options.method);
+    }
+    if (options?.body) {
+      args.push('-d', options.body);
+    }
+
+    const result = await $`act ${args}`.quiet().nothrow();
     if (result.exitCode !== 0) {
       return { success: false, error: result.stderr.toString() };
     }
@@ -92,8 +134,17 @@ export const ACTPrivacyPassPlugin: Plugin = async ({ $, client }) => {
 
       await log('info', `ACT challenge detected, authenticating to ${url}`);
 
-      // Try ACT redemption
-      const result = await tryACTRedeem(url);
+      // Forward original request params
+      const method = input.args.method as string | undefined;
+      const body = input.args.body as string | undefined;
+      const originalHeaders = input.args.headers as Record<string, string> | undefined;
+
+      // Try ACT redemption with original params
+      const result = await tryACTRedeem(url, {
+        headers: originalHeaders,
+        method,
+        body,
+      });
       if (!result.success) {
         await log('error', `ACT auth failed: ${result.error}`);
         // Provide helpful error message
@@ -114,13 +165,22 @@ Automatically handles credential lookup, token generation, and refund processing
 Requires act CLI with an enrolled credential for the issuer.`,
         args: {
           url: tool.schema.string().describe('The URL to fetch'),
+          headers: tool.schema
+            .record(tool.schema.string(), tool.schema.string())
+            .optional()
+            .describe('HTTP headers to send (defaults to Accept: text/markdown)'),
+          method: tool.schema
+            .enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+            .optional()
+            .describe('HTTP method (defaults to GET)'),
+          body: tool.schema.string().optional().describe('Request body'),
           credential: tool.schema
             .string()
             .optional()
             .describe('Credential name (defaults to issuer hostname)'),
         },
         async execute(args) {
-          const { url, credential } = args;
+          const { url, headers, method, body, credential } = args;
 
           // Validate URL
           try {
@@ -131,9 +191,24 @@ Requires act CLI with an enrolled credential for the issuer.`,
 
           await log('info', `ACT fetch: ${url}`);
 
-          // Use act redeem which handles the full flow
-          const credFlag = credential ? `-u ${credential}` : '';
-          const result = await $`act redeem ${url} ${credFlag}`.quiet().nothrow();
+          // Build command args with headers/method/body support
+          const requestHeaders = { Accept: 'text/markdown', ...headers };
+          const cmdArgs: string[] = ['redeem', url];
+
+          if (credential) {
+            cmdArgs.push('-u', credential);
+          }
+          for (const [key, value] of Object.entries(requestHeaders)) {
+            cmdArgs.push('-H', `${key}: ${value}`);
+          }
+          if (method) {
+            cmdArgs.push('-X', method);
+          }
+          if (body) {
+            cmdArgs.push('-d', body);
+          }
+
+          const result = await $`act ${cmdArgs}`.quiet().nothrow();
 
           if (result.exitCode !== 0) {
             const stderr = result.stderr.toString();
