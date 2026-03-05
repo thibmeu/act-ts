@@ -4,29 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { ristretto255 } from 'sigma-proofs';
+import type { Scalar } from 'sigma-proofs';
 import {
-  encodeIssuanceRequest,
-  decodeIssuanceRequest,
-  encodeIssuanceResponse,
-  decodeIssuanceResponse,
-  encodeSpendProof,
-  decodeSpendProof,
-  encodeRefund,
-  decodeRefund,
-  encodeCreditToken,
-  decodeCreditToken,
-  encodeIssuanceState,
-  decodeIssuanceState,
-  encodeSpendState,
-  decodeSpendState,
-  encodePrivateKey,
-  decodePrivateKey,
-  encodePublicKey,
-  decodePublicKey,
-  EncodingError,
-  EncodingErrorCode,
-} from '../src/encoding.js';
-import type {
   IssuanceRequest,
   IssuanceResponse,
   SpendProof,
@@ -36,8 +15,9 @@ import type {
   SpendState,
   PrivateKey,
   PublicKey,
-  Scalar,
-} from '../src/types.js';
+  EncodingError,
+  EncodingErrorCode,
+} from '../src/encoding.js';
 
 const group = ristretto255;
 
@@ -55,8 +35,8 @@ describe('TLS Wire Format Encoding (Main)', () => {
         K: group.generator().multiply(group.randomScalar()),
         pok: randomBytes(64),
       };
-      const encoded = encodeIssuanceRequest(req);
-      const decoded = decodeIssuanceRequest(group, encoded);
+      const encoded = IssuanceRequest.serialize(req);
+      const decoded = IssuanceRequest.deserialize(group, encoded);
 
       expect(decoded.K.equals(req.K)).toBe(true);
       expect(decoded.pok).toEqual(req.pok);
@@ -67,7 +47,7 @@ describe('TLS Wire Format Encoding (Main)', () => {
         K: group.generator().multiply(group.randomScalar()),
         pok: randomBytes(96),
       };
-      const encoded = encodeIssuanceRequest(req);
+      const encoded = IssuanceRequest.serialize(req);
       // K[32] + len[2] + pok[96] = 130
       expect(encoded.length).toBe(32 + 2 + 96);
     });
@@ -77,8 +57,8 @@ describe('TLS Wire Format Encoding (Main)', () => {
         K: group.generator().multiply(group.randomScalar()),
         pok: randomBytes(64),
       };
-      const encoded = encodeIssuanceRequest(req);
-      expect(() => decodeIssuanceRequest(group, encoded.slice(0, 31))).toThrow(EncodingError);
+      const encoded = IssuanceRequest.serialize(req);
+      expect(() => IssuanceRequest.deserialize(group, encoded.slice(0, 31))).toThrow(EncodingError);
     });
 
     it('rejects trailing data', () => {
@@ -86,11 +66,11 @@ describe('TLS Wire Format Encoding (Main)', () => {
         K: group.generator().multiply(group.randomScalar()),
         pok: randomBytes(64),
       };
-      const encoded = encodeIssuanceRequest(req);
+      const encoded = IssuanceRequest.serialize(req);
       const withTrailing = new Uint8Array(encoded.length + 1);
       withTrailing.set(encoded);
       withTrailing[encoded.length] = 0xff;
-      expect(() => decodeIssuanceRequest(group, withTrailing)).toThrow(EncodingError);
+      expect(() => IssuanceRequest.deserialize(group, withTrailing)).toThrow(EncodingError);
     });
   });
 
@@ -103,8 +83,8 @@ describe('TLS Wire Format Encoding (Main)', () => {
         ctx: group.randomScalar(),
         pok: randomBytes(64),
       };
-      const encoded = encodeIssuanceResponse(group, resp);
-      const decoded = decodeIssuanceResponse(group, encoded);
+      const encoded = IssuanceResponse.serialize(group, resp);
+      const decoded = IssuanceResponse.deserialize(group, encoded);
 
       expect(decoded.A.equals(resp.A)).toBe(true);
       expect(decoded.e.equals(resp.e)).toBe(true);
@@ -121,7 +101,7 @@ describe('TLS Wire Format Encoding (Main)', () => {
         ctx: group.randomScalar(),
         pok: randomBytes(128),
       };
-      const encoded = encodeIssuanceResponse(group, resp);
+      const encoded = IssuanceResponse.serialize(group, resp);
       // A[32] + e[32] + c[32] + ctx[32] + len[2] + pok[128] = 258
       expect(encoded.length).toBe(32 * 4 + 2 + 128);
     });
@@ -139,8 +119,8 @@ describe('TLS Wire Format Encoding (Main)', () => {
         Com: Array.from({ length: L }, () => group.generator().multiply(group.randomScalar())),
         pok: randomBytes(256),
       };
-      const encoded = encodeSpendProof(group, proof);
-      const decoded = decodeSpendProof(group, L, encoded);
+      const encoded = SpendProof.serialize(group, proof);
+      const decoded = SpendProof.deserialize(group, L, encoded);
 
       expect(decoded.k.equals(proof.k)).toBe(true);
       expect(decoded.s).toBe(proof.s);
@@ -165,7 +145,7 @@ describe('TLS Wire Format Encoding (Main)', () => {
         Com: Array.from({ length: L }, () => group.generator().multiply(group.randomScalar())),
         pok: randomBytes(512),
       };
-      const encoded = encodeSpendProof(group, proof);
+      const encoded = SpendProof.serialize(group, proof);
       // k[32] + s[32] + ctx[32] + A'[32] + B_bar[32] + Com[8*32] + len[2] + pok[512]
       expect(encoded.length).toBe(32 * 5 + 32 * L + 2 + 512);
     });
@@ -180,9 +160,9 @@ describe('TLS Wire Format Encoding (Main)', () => {
         Com: [group.generator().multiply(group.randomScalar())],
         pok: randomBytes(64),
       };
-      const encoded = encodeSpendProof(group, proof);
-      expect(() => decodeSpendProof(group, 0, encoded)).toThrow(EncodingError);
-      expect(() => decodeSpendProof(group, 129, encoded)).toThrow(EncodingError);
+      const encoded = SpendProof.serialize(group, proof);
+      expect(() => SpendProof.deserialize(group, 0, encoded)).toThrow(EncodingError);
+      expect(() => SpendProof.deserialize(group, 129, encoded)).toThrow(EncodingError);
     });
   });
 
@@ -194,8 +174,8 @@ describe('TLS Wire Format Encoding (Main)', () => {
         t: 10n,
         pok: randomBytes(64),
       };
-      const encoded = encodeRefund(group, refund);
-      const decoded = decodeRefund(group, encoded);
+      const encoded = Refund.serialize(group, refund);
+      const decoded = Refund.deserialize(group, encoded);
 
       expect(decoded.AStar.equals(refund.AStar)).toBe(true);
       expect(decoded.eStar.equals(refund.eStar)).toBe(true);
@@ -210,7 +190,7 @@ describe('TLS Wire Format Encoding (Main)', () => {
         t: 10n,
         pok: randomBytes(128),
       };
-      const encoded = encodeRefund(group, refund);
+      const encoded = Refund.serialize(group, refund);
       // A*[32] + e*[32] + t[32] + len[2] + pok[128] = 226
       expect(encoded.length).toBe(32 * 3 + 2 + 128);
     });
@@ -226,8 +206,8 @@ describe('TLS Wire Format Encoding (Main)', () => {
         c: 50n,
         ctx: group.randomScalar(),
       };
-      const encoded = encodeCreditToken(group, token);
-      const decoded = decodeCreditToken(group, encoded);
+      const encoded = CreditToken.serialize(group, token);
+      const decoded = CreditToken.deserialize(group, encoded);
 
       expect(decoded.A.equals(token.A)).toBe(true);
       expect(decoded.e.equals(token.e)).toBe(true);
@@ -246,7 +226,7 @@ describe('TLS Wire Format Encoding (Main)', () => {
         c: 12345678901234567890n,
         ctx: group.randomScalar(),
       };
-      const encoded = encodeCreditToken(group, token);
+      const encoded = CreditToken.serialize(group, token);
       expect(encoded.length).toBe(192);
     });
   });
@@ -258,8 +238,8 @@ describe('TLS Wire Format Encoding (Main)', () => {
         k: group.randomScalar(),
         ctx: group.randomScalar(),
       };
-      const encoded = encodeIssuanceState(state);
-      const decoded = decodeIssuanceState(group, encoded);
+      const encoded = IssuanceState.serialize(state);
+      const decoded = IssuanceState.deserialize(group, encoded);
 
       expect(decoded.r.equals(state.r)).toBe(true);
       expect(decoded.k.equals(state.k)).toBe(true);
@@ -272,7 +252,7 @@ describe('TLS Wire Format Encoding (Main)', () => {
         k: group.randomScalar(),
         ctx: group.randomScalar(),
       };
-      const encoded = encodeIssuanceState(state);
+      const encoded = IssuanceState.serialize(state);
       expect(encoded.length).toBe(96);
     });
   });
@@ -285,8 +265,8 @@ describe('TLS Wire Format Encoding (Main)', () => {
         m: 70n,
         ctx: group.randomScalar(),
       };
-      const encoded = encodeSpendState(group, state);
-      const decoded = decodeSpendState(group, encoded);
+      const encoded = SpendState.serialize(group, state);
+      const decoded = SpendState.deserialize(group, encoded);
 
       expect(decoded.rStar.equals(state.rStar)).toBe(true);
       expect(decoded.kStar.equals(state.kStar)).toBe(true);
@@ -301,7 +281,7 @@ describe('TLS Wire Format Encoding (Main)', () => {
         m: 999n,
         ctx: group.randomScalar(),
       };
-      const encoded = encodeSpendState(group, state);
+      const encoded = SpendState.serialize(group, state);
       expect(encoded.length).toBe(128);
     });
   });
@@ -309,15 +289,15 @@ describe('TLS Wire Format Encoding (Main)', () => {
   describe('PrivateKey', () => {
     it('roundtrips correctly', () => {
       const sk: PrivateKey = { x: group.randomScalar() };
-      const encoded = encodePrivateKey(sk);
-      const decoded = decodePrivateKey(group, encoded);
+      const encoded = PrivateKey.serialize(sk);
+      const decoded = PrivateKey.deserialize(group, encoded);
 
       expect(decoded.x.equals(sk.x)).toBe(true);
     });
 
     it('has fixed size of 32 bytes', () => {
       const sk: PrivateKey = { x: group.randomScalar() };
-      const encoded = encodePrivateKey(sk);
+      const encoded = PrivateKey.serialize(sk);
       expect(encoded.length).toBe(32);
     });
   });
@@ -325,21 +305,21 @@ describe('TLS Wire Format Encoding (Main)', () => {
   describe('PublicKey', () => {
     it('roundtrips correctly', () => {
       const pk: PublicKey = { W: group.generator().multiply(group.randomScalar()) };
-      const encoded = encodePublicKey(pk);
-      const decoded = decodePublicKey(group, encoded);
+      const encoded = PublicKey.serialize(pk);
+      const decoded = PublicKey.deserialize(group, encoded);
 
       expect(decoded.W.equals(pk.W)).toBe(true);
     });
 
     it('has fixed size of 32 bytes', () => {
       const pk: PublicKey = { W: group.generator().multiply(group.randomScalar()) };
-      const encoded = encodePublicKey(pk);
+      const encoded = PublicKey.serialize(pk);
       expect(encoded.length).toBe(32);
     });
 
     it('rejects identity point', () => {
       const identityBytes = group.identity().toBytes();
-      expect(() => decodePublicKey(group, identityBytes)).toThrow(EncodingError);
+      expect(() => PublicKey.deserialize(group, identityBytes)).toThrow(EncodingError);
     });
   });
 
@@ -347,7 +327,7 @@ describe('TLS Wire Format Encoding (Main)', () => {
     it('throws EncodingError with correct codes', () => {
       // TooShort
       try {
-        decodePublicKey(group, new Uint8Array(16));
+        PublicKey.deserialize(group, new Uint8Array(16));
       } catch (e) {
         expect(e).toBeInstanceOf(EncodingError);
         expect((e as EncodingError).code).toBe(EncodingErrorCode.TooShort);
@@ -355,11 +335,11 @@ describe('TLS Wire Format Encoding (Main)', () => {
 
       // TrailingData
       const pk: PublicKey = { W: group.generator().multiply(group.randomScalar()) };
-      const encoded = encodePublicKey(pk);
+      const encoded = PublicKey.serialize(pk);
       const withTrailing = new Uint8Array(encoded.length + 5);
       withTrailing.set(encoded);
       try {
-        decodePublicKey(group, withTrailing);
+        PublicKey.deserialize(group, withTrailing);
       } catch (e) {
         expect(e).toBeInstanceOf(EncodingError);
         expect((e as EncodingError).code).toBe(EncodingErrorCode.TrailingData);
@@ -367,7 +347,7 @@ describe('TLS Wire Format Encoding (Main)', () => {
 
       // InvalidL
       try {
-        decodeSpendProof(group, 200, new Uint8Array(1000));
+        SpendProof.deserialize(group, 200, new Uint8Array(1000));
       } catch (e) {
         expect(e).toBeInstanceOf(EncodingError);
         expect((e as EncodingError).code).toBe(EncodingErrorCode.InvalidL);
@@ -386,8 +366,8 @@ describe('TLS Wire Format Encoding (Main)', () => {
         c: largeCredit,
         ctx: group.randomScalar(),
       };
-      const encoded = encodeCreditToken(group, token);
-      const decoded = decodeCreditToken(group, encoded);
+      const encoded = CreditToken.serialize(group, token);
+      const decoded = CreditToken.deserialize(group, encoded);
 
       expect(decoded.c).toBe(largeCredit);
     });
@@ -398,8 +378,8 @@ describe('TLS Wire Format Encoding (Main)', () => {
         K: group.generator().multiply(group.randomScalar()),
         pok: largePok,
       };
-      const encoded = encodeIssuanceRequest(req);
-      const decoded = decodeIssuanceRequest(group, encoded);
+      const encoded = IssuanceRequest.serialize(req);
+      const decoded = IssuanceRequest.deserialize(group, encoded);
 
       expect(decoded.pok).toEqual(largePok);
     });

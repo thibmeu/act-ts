@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * Test Vector Generation for ACT VNEXT (TLS wire format)
+ * Test Vector Generation for ACT (TLS wire format)
  *
  * Generates deterministic test vectors using SeededPRNGForTestingOnly.
  * Vectors are written to test/vectors/draft-schlesinger-02.json.
@@ -21,16 +21,16 @@ import {
   verifySpendProof,
   issueRefund,
   constructRefundToken,
-  encodeIssuanceRequest,
-  encodeIssuanceResponse,
-  encodeSpendProof,
-  encodeRefund,
-  encodeCreditToken,
-  encodePrivateKey,
-  encodePublicKey,
+  IssuanceRequest,
+  IssuanceResponse,
+  SpendProof,
+  Refund,
+  CreditToken,
+  PrivateKey,
+  PublicKey,
   SeededPRNGForTestingOnly,
   toHex,
-} from '../src/index-vnext.js';
+} from '../src/index.js';
 
 /** Convert hex string to Uint8Array */
 function hexToBytes(hex: string): Uint8Array {
@@ -110,8 +110,8 @@ function generateVectors(): TestVectors {
   // Generate keys deterministically
   const keyGenRng = new SeededPRNGForTestingOnly(CONFIG.seeds.keyGen);
   const keys = keyGen(group, keyGenRng);
-  const skBytes = encodePrivateKey(keys.privateKey);
-  const pkBytes = encodePublicKey(keys.publicKey);
+  const skBytes = PrivateKey.serialize(keys.privateKey);
+  const pkBytes = PublicKey.serialize(keys.publicKey);
   console.log('Generated key pair');
 
   // Issuance
@@ -119,7 +119,7 @@ function generateVectors(): TestVectors {
   const issuanceCtx = group.scalarFromBigint(0x1234n);
 
   const [request, state] = issueRequest(params, issuanceCtx, issuanceRng);
-  const issuanceRequestBytes = encodeIssuanceRequest(request);
+  const issuanceRequestBytes = IssuanceRequest.serialize(request);
 
   const response = issueResponse(
     params,
@@ -129,16 +129,19 @@ function generateVectors(): TestVectors {
     issuanceCtx,
     issuanceRng
   );
-  const issuanceResponseBytes = encodeIssuanceResponse(group, { ...response, ctx: issuanceCtx });
+  const issuanceResponseBytes = IssuanceResponse.serialize(group, {
+    ...response,
+    ctx: issuanceCtx,
+  });
 
   const token = verifyIssuance(params, keys.publicKey, response, state);
-  const creditTokenBytes = encodeCreditToken(group, token);
+  const creditTokenBytes = CreditToken.serialize(group, token);
   console.log('Generated issuance (credit =', token.c, ')');
 
   // Spending
   const spendRng = new SeededPRNGForTestingOnly(CONFIG.seeds.spend);
   const [spendProof, spendState] = proveSpend(params, token, CONFIG.spendAmount, spendRng);
-  const spendProofBytes = encodeSpendProof(group, spendProof);
+  const spendProofBytes = SpendProof.serialize(group, spendProof);
   const nullifierHex = toHex(spendProof.k.toBytes());
 
   // Verify spend proof
@@ -148,15 +151,15 @@ function generateVectors(): TestVectors {
   // Refund
   const refundRng = new SeededPRNGForTestingOnly(CONFIG.seeds.refund);
   const refund = issueRefund(params, keys.privateKey, spendProof, CONFIG.refundAmount, refundRng);
-  const refundBytes = encodeRefund(group, refund);
+  const refundBytes = Refund.serialize(group, refund);
 
   const newToken = constructRefundToken(params, keys.publicKey, spendProof, refund, spendState);
-  const newTokenBytes = encodeCreditToken(group, newToken);
+  const newTokenBytes = CreditToken.serialize(group, newToken);
   const newNullifierHex = toHex(newToken.k.toBytes());
   console.log('Generated refund (new balance =', newToken.c, ')');
 
   return {
-    description: 'ACT VNEXT Test Vectors (TLS wire format)',
+    description: 'ACT Test Vectors (TLS wire format)',
     format: 'TLS presentation language (RFC 8446 Section 3)',
     ciphersuite: 'ACT_ristretto255_SHAKE128',
     generated: new Date().toISOString().split('T')[0]!,

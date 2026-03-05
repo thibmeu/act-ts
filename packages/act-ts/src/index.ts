@@ -9,26 +9,15 @@
 
 // Re-export sigma-proofs group for convenience
 export { ristretto255 } from 'sigma-proofs';
+export type { Scalar, GroupElement } from 'sigma-proofs';
 
 // Core types
-export type {
-  Scalar,
-  GroupElement,
-  SystemParams,
-  PrivateKey,
-  PublicKey,
-  KeyPair,
-  CreditToken,
-  IssuanceState,
-  IssuanceRequest,
-  IssuanceResponse,
-  SpendState,
-  SpendProof,
-  Refund,
-  PRNG,
-} from './types.js';
+export type { SystemParams } from './params.js';
+export type { PRNG } from './rng.js';
+export type { KeyPair } from './encoding.js';
 
-export { ACTError, ACTErrorCode } from './types.js';
+// Errors
+export { ACTError, ACTErrorCode } from './errors.js';
 
 // System parameters
 export {
@@ -39,14 +28,7 @@ export {
 } from './params.js';
 
 // Key generation
-export {
-  keyGen,
-  derivePublicKey,
-  privateKeyToBytes,
-  privateKeyFromBytes,
-  publicKeyToBytes,
-  publicKeyFromBytes,
-} from './keygen.js';
+export { keyGen, derivePublicKey } from './keygen.js';
 
 // Issuance protocol
 export {
@@ -67,26 +49,17 @@ export {
   getSpendInstanceLabel,
 } from './spend.js';
 
-// TLS wire format encoding
+// Serialization namespaces (TLS wire format)
 export {
-  encodeIssuanceRequest,
-  decodeIssuanceRequest,
-  encodeIssuanceResponse,
-  decodeIssuanceResponse,
-  encodeSpendProof,
-  decodeSpendProof,
-  encodeRefund,
-  decodeRefund,
-  encodeCreditToken,
-  decodeCreditToken,
-  encodeIssuanceState,
-  decodeIssuanceState,
-  encodeSpendState,
-  decodeSpendState,
-  encodePrivateKey,
-  decodePrivateKey,
-  encodePublicKey,
-  decodePublicKey,
+  PrivateKey,
+  PublicKey,
+  IssuanceRequest,
+  IssuanceResponse,
+  SpendProof,
+  Refund,
+  CreditToken,
+  IssuanceState,
+  SpendState,
   EncodingError,
   EncodingErrorCode,
 } from './encoding.js';

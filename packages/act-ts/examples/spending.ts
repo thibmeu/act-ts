@@ -20,7 +20,7 @@ import {
   constructRefundToken,
   WebCryptoPRNG,
   toHex,
-} from '../src/index-vnext.js';
+} from '../src/index.js';
 
 export async function spendingExample(): Promise<void> {
   console.log('=== ACT Spending Example ===\n');

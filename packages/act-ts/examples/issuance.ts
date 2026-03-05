@@ -17,7 +17,7 @@ import {
   verifyIssuance,
   WebCryptoPRNG,
   toHex,
-} from '../src/index-vnext.js';
+} from '../src/index.js';
 
 export async function issuanceExample(): Promise<void> {
   console.log('=== ACT Issuance Example ===\n');

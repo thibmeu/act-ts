@@ -1,5 +1,5 @@
 /**
- * Benchmarks for ACT VNEXT implementation
+ * Benchmarks for ACT implementation
  *
  * Run with: npx vitest bench
  */
@@ -22,7 +22,7 @@ import {
   type CreditToken,
   type SpendProof,
   type SpendState,
-} from '../src/index-vnext.js';
+} from '../src/index.js';
 
 // Shared setup - created once per benchmark suite
 const group = ristretto255;

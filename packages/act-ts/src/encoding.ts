@@ -1,5 +1,5 @@
 /**
- * TLS Presentation Language Encoding for ACT Protocol Messages (VNEXT)
+ * TLS Presentation Language Encoding for ACT Protocol Messages
  *
  * Implements the wire format as specified in the IETF draft using TLS
  * presentation language (RFC 8446 Section 3). Fixed-size fields are
@@ -19,17 +19,98 @@
  */
 
 import type { Group, Scalar, GroupElement } from 'sigma-proofs';
-import type {
-  IssuanceRequest,
-  IssuanceResponse,
-  SpendProof,
-  Refund,
-  CreditToken,
-  IssuanceState,
-  SpendState,
-  PrivateKey,
-  PublicKey,
-} from './types.js';
+
+// =============================================================================
+// Type Definitions (co-located with serialization)
+// =============================================================================
+
+/** Issuer's private key */
+export interface PrivateKey {
+  readonly x: Scalar;
+}
+
+/** Issuer's public key (W = G * x) */
+export interface PublicKey {
+  readonly W: GroupElement;
+}
+
+/** Key pair for issuer */
+export interface KeyPair {
+  readonly privateKey: PrivateKey;
+  readonly publicKey: PublicKey;
+}
+
+/**
+ * Credit token held by client.
+ *
+ * Contains BBS signature components and credit value:
+ * - A: Signature point
+ * - e: Signature scalar
+ * - k: Nullifier (client-chosen)
+ * - r: Blinding factor
+ * - c: Credit amount
+ * - ctx: Request context
+ */
+export interface CreditToken {
+  readonly A: GroupElement;
+  readonly e: Scalar;
+  readonly k: Scalar;
+  readonly r: Scalar;
+  readonly c: bigint;
+  readonly ctx: Scalar;
+}
+
+/** Client state during issuance */
+export interface IssuanceState {
+  readonly k: Scalar;
+  readonly r: Scalar;
+  readonly ctx: Scalar;
+}
+
+/** Issuance request (K + pok) */
+export interface IssuanceRequest {
+  readonly K: GroupElement;
+  readonly pok: Uint8Array;
+}
+
+/** Issuance response (A, e, c + pok) */
+export interface IssuanceResponse {
+  readonly A: GroupElement;
+  readonly e: Scalar;
+  readonly c: bigint;
+  readonly pok: Uint8Array;
+}
+
+/** Client state during spend */
+export interface SpendState {
+  readonly kStar: Scalar;
+  readonly rStar: Scalar;
+  readonly m: bigint;
+  readonly ctx: Scalar;
+}
+
+/** Spend proof (k, s, ctx, A', B_bar, Com[] + pok) */
+export interface SpendProof {
+  readonly k: Scalar;
+  readonly s: bigint;
+  readonly ctx: Scalar;
+  readonly APrime: GroupElement;
+  readonly BBar: GroupElement;
+  readonly Com: readonly GroupElement[];
+  readonly pok: Uint8Array;
+}
+
+/** Refund response (A*, e*, t + pok) */
+export interface Refund {
+  readonly AStar: GroupElement;
+  readonly eStar: Scalar;
+  readonly t: bigint;
+  readonly pok: Uint8Array;
+}
+
+// =============================================================================
+// Encoding Errors
+// =============================================================================
 
 /** Error type for TLS encoding/decoding */
 export class EncodingError extends Error {
@@ -379,3 +460,61 @@ export function decodePublicKey(group: Group, data: Uint8Array): PublicKey {
   reader.checkExact();
   return { W };
 }
+
+// =============================================================================
+// Serialization Namespace Objects
+// =============================================================================
+
+/** PrivateKey serialization namespace */
+export const PrivateKey = {
+  serialize: encodePrivateKey,
+  deserialize: decodePrivateKey,
+} as const;
+
+/** PublicKey serialization namespace */
+export const PublicKey = {
+  serialize: encodePublicKey,
+  deserialize: decodePublicKey,
+} as const;
+
+/** IssuanceRequest serialization namespace */
+export const IssuanceRequest = {
+  serialize: encodeIssuanceRequest,
+  deserialize: decodeIssuanceRequest,
+} as const;
+
+/** IssuanceResponse serialization namespace */
+export const IssuanceResponse = {
+  serialize: encodeIssuanceResponse,
+  deserialize: decodeIssuanceResponse,
+} as const;
+
+/** SpendProof serialization namespace */
+export const SpendProof = {
+  serialize: encodeSpendProof,
+  deserialize: decodeSpendProof,
+} as const;
+
+/** Refund serialization namespace */
+export const Refund = {
+  serialize: encodeRefund,
+  deserialize: decodeRefund,
+} as const;
+
+/** CreditToken serialization namespace */
+export const CreditToken = {
+  serialize: encodeCreditToken,
+  deserialize: decodeCreditToken,
+} as const;
+
+/** IssuanceState serialization namespace */
+export const IssuanceState = {
+  serialize: encodeIssuanceState,
+  deserialize: decodeIssuanceState,
+} as const;
+
+/** SpendState serialization namespace */
+export const SpendState = {
+  serialize: encodeSpendState,
+  deserialize: decodeSpendState,
+} as const;

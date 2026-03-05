@@ -1,5 +1,5 @@
 /**
- * ACT Token Spending Protocol - VNEXT (sigma-draft-compliance)
+ * ACT Token Spending Protocol
  *
  * Section 3.4: Token Spending
  *
@@ -8,19 +8,18 @@
  */
 
 import { LinearRelation, NISigmaProtocol, appendDleq, type Group } from 'sigma-proofs';
+import type { Scalar, GroupElement } from 'sigma-proofs';
+import type { SystemParams } from './params.js';
 import type {
-  SystemParams,
   PrivateKey,
   PublicKey,
   CreditToken,
   SpendProof,
   SpendState,
   Refund,
-  Scalar,
-  GroupElement,
-  PRNG,
-} from './types.js';
-import { ACTError, ACTErrorCode } from './types.js';
+} from './encoding.js';
+import type { PRNG } from './rng.js';
+import { ACTError, ACTErrorCode } from './errors.js';
 import { serializeProof, deserializeProof } from './issuance.js';
 import { toHex } from './rng.js';
 

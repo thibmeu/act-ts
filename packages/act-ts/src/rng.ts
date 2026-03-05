@@ -7,7 +7,17 @@
  */
 
 import { shake128 } from '@noble/hashes/sha3';
-import type { PRNG } from './types.js';
+
+/**
+ * PRNG interface for deterministic randomness.
+ *
+ * Production implementations MUST use a CSPRNG (FIPS 186).
+ * Test implementations may use SeededPRNGForTestingOnly for reproducibility.
+ */
+export interface PRNG {
+  /** Generate n random bytes */
+  randomBytes(n: number): Uint8Array;
+}
 
 /**
  * Production PRNG using Web Crypto API.

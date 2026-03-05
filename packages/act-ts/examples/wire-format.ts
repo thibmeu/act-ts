@@ -15,17 +15,13 @@ import {
   issueResponse,
   verifyIssuance,
   proveSpend,
-  encodeIssuanceRequest,
-  decodeIssuanceRequest,
-  encodeIssuanceResponse,
-  decodeIssuanceResponse,
-  encodeSpendProof,
-  decodeSpendProof,
-  encodeCreditToken,
-  decodeCreditToken,
+  IssuanceRequest,
+  IssuanceResponse,
+  SpendProof,
+  CreditToken,
   WebCryptoPRNG,
   toHex,
-} from '../src/index-vnext.js';
+} from '../src/index.js';
 
 export async function wireFormatExample(): Promise<void> {
   console.log('=== ACT Wire Format Example ===\n');
@@ -42,11 +38,11 @@ export async function wireFormatExample(): Promise<void> {
   console.log('--- Issuance Request ---');
   const [request, clientState] = issueRequest(params, ctx, rng);
 
-  const requestBytes = encodeIssuanceRequest(request);
+  const requestBytes = IssuanceRequest.serialize(request);
   console.log(`Encoded request: ${requestBytes.length} bytes`);
   console.log(`  Hex: ${toHex(requestBytes).slice(0, 64)}...`);
 
-  const decodedRequest = decodeIssuanceRequest(group, requestBytes);
+  const decodedRequest = IssuanceRequest.deserialize(group, requestBytes);
   console.log(`  Round-trip: OK`);
   console.log();
 
@@ -54,11 +50,11 @@ export async function wireFormatExample(): Promise<void> {
   console.log('--- Issuance Response ---');
   const response = issueResponse(params, sk, decodedRequest, 100n, ctx, rng);
 
-  const responseBytes = encodeIssuanceResponse(group, { ...response, ctx });
+  const responseBytes = IssuanceResponse.serialize(group, { ...response, ctx });
   console.log(`Encoded response: ${responseBytes.length} bytes`);
   console.log(`  Hex: ${toHex(responseBytes).slice(0, 64)}...`);
 
-  const decodedResponse = decodeIssuanceResponse(group, responseBytes);
+  const decodedResponse = IssuanceResponse.deserialize(group, responseBytes);
   console.log(`  Round-trip: OK`);
   console.log();
 
@@ -66,11 +62,11 @@ export async function wireFormatExample(): Promise<void> {
   console.log('--- Credit Token ---');
   const token = verifyIssuance(params, pk, decodedResponse, clientState);
 
-  const tokenBytes = encodeCreditToken(group, token);
+  const tokenBytes = CreditToken.serialize(group, token);
   console.log(`Encoded token: ${tokenBytes.length} bytes`);
   console.log(`  Hex: ${toHex(tokenBytes).slice(0, 64)}...`);
 
-  const decodedToken = decodeCreditToken(group, tokenBytes);
+  const decodedToken = CreditToken.deserialize(group, tokenBytes);
   console.log(`  Balance: ${decodedToken.c} credits`);
   console.log(`  Round-trip: OK`);
   console.log();
@@ -79,11 +75,11 @@ export async function wireFormatExample(): Promise<void> {
   console.log('--- Spend Proof ---');
   const [proof] = proveSpend(params, decodedToken, 30n, rng);
 
-  const proofBytes = encodeSpendProof(group, proof);
+  const proofBytes = SpendProof.serialize(group, proof);
   console.log(`Encoded proof: ${proofBytes.length} bytes`);
   console.log(`  Hex: ${toHex(proofBytes).slice(0, 64)}...`);
 
-  const decodedProof = decodeSpendProof(group, params.L, proofBytes);
+  const decodedProof = SpendProof.deserialize(group, params.L, proofBytes);
   console.log(`  Spend amount: ${decodedProof.s}`);
   console.log(`  Round-trip: OK`);
   console.log();

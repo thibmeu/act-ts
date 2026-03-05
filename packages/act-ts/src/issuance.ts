@@ -1,5 +1,5 @@
 /**
- * ACT Token Issuance Protocol - VNEXT (sigma-draft-compliance)
+ * ACT Token Issuance Protocol
  *
  * Section 3.3: Token Issuance
  *
@@ -8,18 +8,18 @@
  */
 
 import { LinearRelation, NISigmaProtocol, appendPedersen, appendDleq } from 'sigma-proofs';
+import type { Scalar } from 'sigma-proofs';
+import type { SystemParams } from './params.js';
 import type {
-  SystemParams,
   PrivateKey,
   PublicKey,
   IssuanceRequest,
   IssuanceResponse,
   IssuanceState,
   CreditToken,
-  Scalar,
-  PRNG,
-} from './types.js';
-import { ACTError, ACTErrorCode } from './types.js';
+} from './encoding.js';
+import type { PRNG } from './rng.js';
+import { ACTError, ACTErrorCode } from './errors.js';
 
 /**
  * Concatenate Uint8Arrays

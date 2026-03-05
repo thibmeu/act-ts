@@ -22,7 +22,7 @@ import {
   WebCryptoPRNG,
   toHex,
   type CreditToken,
-} from '../src/index-vnext.js';
+} from '../src/index.js';
 
 export async function fullFlowExample(): Promise<void> {
   console.log('=== ACT Full Flow Example ===\n');

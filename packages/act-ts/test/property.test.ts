@@ -7,14 +7,7 @@
 import { describe, it } from 'vitest';
 import * as fc from 'fast-check';
 import { ristretto255 } from 'sigma-proofs';
-import {
-  encodePrivateKey,
-  decodePrivateKey,
-  encodePublicKey,
-  decodePublicKey,
-  EncodingError,
-} from '../src/encoding.js';
-import type { PrivateKey, PublicKey } from '../src/types.js';
+import { PrivateKey, PublicKey, EncodingError } from '../src/encoding.js';
 
 const group = ristretto255;
 
@@ -39,8 +32,8 @@ describe('Property-Based Tests (Main)', () => {
           try {
             const x = group.scalarFromBytes(bytes);
             const sk: PrivateKey = { x };
-            const encoded = encodePrivateKey(sk);
-            const decoded = decodePrivateKey(group, encoded);
+            const encoded = PrivateKey.serialize(sk);
+            const decoded = PrivateKey.deserialize(group, encoded);
             return decoded.x.equals(sk.x);
           } catch {
             // Invalid scalar bytes are expected sometimes
@@ -59,8 +52,8 @@ describe('Property-Based Tests (Main)', () => {
             if (x.isZero()) return true; // Skip zero scalar
             const W = group.generator().multiply(x);
             const pk: PublicKey = { W };
-            const encoded = encodePublicKey(pk);
-            const decoded = decodePublicKey(group, encoded);
+            const encoded = PublicKey.serialize(pk);
+            const decoded = PublicKey.deserialize(group, encoded);
             return decoded.W.equals(pk.W);
           } catch {
             return true;
@@ -78,7 +71,7 @@ describe('Property-Based Tests (Main)', () => {
           try {
             const x = group.scalarFromBytes(bytes);
             const sk: PrivateKey = { x };
-            const encoded = encodePrivateKey(sk);
+            const encoded = PrivateKey.serialize(sk);
             return encoded.length === 32;
           } catch {
             return true;
@@ -96,7 +89,7 @@ describe('Property-Based Tests (Main)', () => {
             if (x.isZero()) return true;
             const W = group.generator().multiply(x);
             const pk: PublicKey = { W };
-            const encoded = encodePublicKey(pk);
+            const encoded = PublicKey.serialize(pk);
             return encoded.length === 32;
           } catch {
             return true;
@@ -113,7 +106,7 @@ describe('Property-Based Tests (Main)', () => {
         fc.property(fc.integer({ min: 0, max: 31 }), (len) => {
           const data = new Uint8Array(len);
           try {
-            decodePrivateKey(group, data);
+            PrivateKey.deserialize(group, data);
             return false; // Should have thrown
           } catch (e) {
             return e instanceof EncodingError;
@@ -128,7 +121,7 @@ describe('Property-Based Tests (Main)', () => {
         fc.property(fc.integer({ min: 0, max: 31 }), (len) => {
           const data = new Uint8Array(len);
           try {
-            decodePublicKey(group, data);
+            PublicKey.deserialize(group, data);
             return false;
           } catch (e) {
             return e instanceof EncodingError;
@@ -144,10 +137,10 @@ describe('Property-Based Tests (Main)', () => {
           try {
             const x = group.scalarFromBytes(bytes);
             const sk: PrivateKey = { x };
-            const encoded = encodePrivateKey(sk);
+            const encoded = PrivateKey.serialize(sk);
             const withTrailing = new Uint8Array(encoded.length + extra);
             withTrailing.set(encoded);
-            decodePrivateKey(group, withTrailing);
+            PrivateKey.deserialize(group, withTrailing);
             return false;
           } catch (e) {
             return e instanceof EncodingError || e instanceof Error;

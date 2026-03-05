@@ -1,5 +1,5 @@
 /**
- * ACT System Parameters Generation - VNEXT (sigma-draft-compliance)
+ * ACT System Parameters Generation
  *
  * Section 3.1: SetGenerators
  *
@@ -8,10 +8,27 @@
  */
 
 import { shake128 } from '@noble/hashes/sha3';
-import type { Group } from 'sigma-proofs';
-import type { SystemParams, GroupElement } from './types.js';
-import { ACTError, ACTErrorCode } from './types.js';
+import type { Group, GroupElement } from 'sigma-proofs';
+import { ACTError, ACTErrorCode } from './errors.js';
 import { toHex } from './rng.js';
+
+/**
+ * System parameters (Section 3.1 of ACT draft)
+ *
+ * - G: Generator of the Ristretto group (implicit, from group)
+ * - H1, H2, H3, H4: Additional generators for commitments
+ * - L: Bit length for credit values (1 <= L <= 128)
+ * - domainSeparator: Unique deployment identifier
+ */
+export interface SystemParams {
+  readonly group: Group;
+  readonly H1: GroupElement;
+  readonly H2: GroupElement;
+  readonly H3: GroupElement;
+  readonly H4: GroupElement;
+  readonly L: number;
+  readonly domainSeparator: Uint8Array;
+}
 
 /**
  * Concatenate Uint8Arrays

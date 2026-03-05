@@ -16,16 +16,11 @@ import {
   ristretto255,
   generateParameters,
   verifySpendProof,
-  decodeIssuanceRequest,
-  decodeIssuanceResponse,
-  decodeSpendProof,
-  decodeRefund,
-  decodeCreditToken,
-  encodeIssuanceRequest,
-  encodeIssuanceResponse,
-  encodeSpendProof,
-  encodeRefund,
-  encodeCreditToken,
+  IssuanceRequest,
+  IssuanceResponse,
+  SpendProof,
+  Refund,
+  CreditToken,
   toHex,
 } from '../src/index.js';
 
@@ -95,65 +90,65 @@ describe('ACT Vector Verification', () => {
   describe('encoding roundtrips', () => {
     it('issuance request', () => {
       const reqBytes = hexToBytes(vectors.issuance.issuance_request);
-      const req = decodeIssuanceRequest(group, reqBytes);
+      const req = IssuanceRequest.deserialize(group, reqBytes);
 
       expect(req.K.equals(group.identity())).toBe(false);
       expect(req.pok.length).toBeGreaterThan(0);
 
-      const reencoded = encodeIssuanceRequest(req);
+      const reencoded = IssuanceRequest.serialize(req);
       expect(toHex(reencoded)).toBe(vectors.issuance.issuance_request);
     });
 
     it('issuance response', () => {
       const respBytes = hexToBytes(vectors.issuance.issuance_response);
-      const resp = decodeIssuanceResponse(group, respBytes);
+      const resp = IssuanceResponse.deserialize(group, respBytes);
 
       expect(resp.A.equals(group.identity())).toBe(false);
       expect(resp.c).toBe(BigInt(vectors.issuance.credit_amount));
 
-      const reencoded = encodeIssuanceResponse(group, resp);
+      const reencoded = IssuanceResponse.serialize(group, resp);
       expect(toHex(reencoded)).toBe(vectors.issuance.issuance_response);
     });
 
     it('credit token', () => {
       const tokenBytes = hexToBytes(vectors.issuance.credit_token);
-      const token = decodeCreditToken(group, tokenBytes);
+      const token = CreditToken.deserialize(group, tokenBytes);
 
       expect(token.c).toBe(BigInt(vectors.issuance.credit_amount));
 
-      const reencoded = encodeCreditToken(group, token);
+      const reencoded = CreditToken.serialize(group, token);
       expect(toHex(reencoded)).toBe(vectors.issuance.credit_token);
     });
 
     it('spend proof', () => {
       const proofBytes = hexToBytes(vectors.spending.spend_proof);
-      const proof = decodeSpendProof(group, vectors.parameters.L, proofBytes);
+      const proof = SpendProof.deserialize(group, vectors.parameters.L, proofBytes);
 
       expect(proof.s).toBe(BigInt(vectors.spending.spend_amount));
       expect(toHex(proof.k.toBytes())).toBe(vectors.spending.nullifier);
 
-      const reencoded = encodeSpendProof(group, proof);
+      const reencoded = SpendProof.serialize(group, proof);
       expect(toHex(reencoded)).toBe(vectors.spending.spend_proof);
     });
 
     it('refund', () => {
       const refundBytes = hexToBytes(vectors.refund.refund);
-      const refund = decodeRefund(group, refundBytes);
+      const refund = Refund.deserialize(group, refundBytes);
 
       expect(refund.t).toBe(BigInt(vectors.refund.refund_amount));
 
-      const reencoded = encodeRefund(group, refund);
+      const reencoded = Refund.serialize(group, refund);
       expect(toHex(reencoded)).toBe(vectors.refund.refund);
     });
 
     it('new credit token', () => {
       const tokenBytes = hexToBytes(vectors.refund.new_credit_token);
-      const token = decodeCreditToken(group, tokenBytes);
+      const token = CreditToken.deserialize(group, tokenBytes);
 
       expect(token.c).toBe(BigInt(vectors.refund.remaining_balance));
       expect(toHex(token.k.toBytes())).toBe(vectors.refund.new_nullifier);
 
-      const reencoded = encodeCreditToken(group, token);
+      const reencoded = CreditToken.serialize(group, token);
       expect(toHex(reencoded)).toBe(vectors.refund.new_credit_token);
     });
   });
@@ -172,7 +167,7 @@ describe('ACT Vector Verification', () => {
 
       // Load and verify spend proof
       const proofBytes = hexToBytes(vectors.spending.spend_proof);
-      const proof = decodeSpendProof(group, vectors.parameters.L, proofBytes);
+      const proof = SpendProof.deserialize(group, vectors.parameters.L, proofBytes);
 
       expect(() => verifySpendProof(params, sk, proof)).not.toThrow();
     });
@@ -189,17 +184,17 @@ describe('ACT Vector Verification', () => {
 
     it('nullifier in token matches spend proof', () => {
       const tokenBytes = hexToBytes(vectors.issuance.credit_token);
-      const token = decodeCreditToken(group, tokenBytes);
+      const token = CreditToken.deserialize(group, tokenBytes);
 
       expect(toHex(token.k.toBytes())).toBe(vectors.spending.nullifier);
     });
 
     it('new token has different nullifier (unlinkability)', () => {
       const originalTokenBytes = hexToBytes(vectors.issuance.credit_token);
-      const originalToken = decodeCreditToken(group, originalTokenBytes);
+      const originalToken = CreditToken.deserialize(group, originalTokenBytes);
 
       const newTokenBytes = hexToBytes(vectors.refund.new_credit_token);
-      const newToken = decodeCreditToken(group, newTokenBytes);
+      const newToken = CreditToken.deserialize(group, newTokenBytes);
 
       expect(newToken.k.equals(originalToken.k)).toBe(false);
     });
