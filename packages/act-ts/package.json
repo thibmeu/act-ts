@@ -1,6 +1,6 @@
 {
   "name": "act-ts",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Anonymous Credit Tokens (draft-schlesinger-cfrg-act)",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,11 +10,6 @@
       "types": "./dist/index.d.ts",
       "development": "./src/index.ts",
       "import": "./dist/index.js"
-    },
-    "./vnext": {
-      "types": "./dist/index-vnext.d.ts",
-      "development": "./src/index-vnext.ts",
-      "import": "./dist/index-vnext.js"
     }
   },
   "files": [
@@ -45,7 +40,6 @@
   "dependencies": {
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^1.7.2",
-    "cbor2": "^2.2.1",
     "sigma-proofs": "*"
   },
   "devDependencies": {

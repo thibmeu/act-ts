@@ -7,7 +7,7 @@
  */
 
 import { shake128 } from '@noble/hashes/sha3';
-import type { PRNG } from './types-vnext.js';
+import type { PRNG } from './types.js';
 
 /**
  * Production PRNG using Web Crypto API.

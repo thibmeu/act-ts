@@ -1,30 +1,31 @@
 /**
- * ACT Key Generation
+ * ACT Key Generation - VNEXT (sigma-draft-compliance)
  *
  * Section 3.2: Key Generation
  */
 
-import type { KeyPair, PrivateKey, PublicKey } from './types.js';
-import { group } from './group.js';
+import type { Group } from 'sigma-proofs';
+import type { PrivateKey, PublicKey, KeyPair, PRNG } from './types.js';
 
 /**
- * KeyGen - Generate issuer key pair
+ * Generate a new issuer key pair.
  *
- * Section 3.2:
- *   1. x <- Zq (random scalar)
- *   2. W = G * x
- *   3. sk = x
- *   4. pk = W
- *   5. return (sk, pk)
+ * KeyGen(G, rng):
+ *   x <- Zq (random scalar)
+ *   W = G * x
+ *   return (PrivateKey(x), PublicKey(W))
  *
- * @returns Key pair containing private and public keys
+ * @param group - The elliptic curve group
+ * @param rng - Random number generator
+ * @returns Key pair
  */
-export function keyGen(): KeyPair {
-  // Step 1: Sample random scalar
-  const x = group.randomScalar();
+export function keyGen(group: Group, rng: PRNG): KeyPair {
+  // Generate random scalar using rng + hash-to-scalar for uniform distribution
+  const bytes = rng.randomBytes(group.scalarSize + 16);
+  const x = group.hashToScalar(bytes);
 
-  // Step 2: Compute public key W = G * x
-  const W = group.generator().multiply(x);
+  const G = group.generator();
+  const W = G.multiply(x);
 
   return {
     privateKey: { x },
@@ -33,39 +34,44 @@ export function keyGen(): KeyPair {
 }
 
 /**
- * Serialize private key to bytes
+ * Derive public key from private key.
+ *
+ * @param group - The elliptic curve group
+ * @param sk - Private key
+ * @returns Public key
+ */
+export function derivePublicKey(group: Group, sk: PrivateKey): PublicKey {
+  const G = group.generator();
+  const W = G.multiply(sk.x);
+  return { W };
+}
+
+/**
+ * Serialize private key to bytes.
  */
 export function privateKeyToBytes(sk: PrivateKey): Uint8Array {
   return sk.x.toBytes();
 }
 
 /**
- * Deserialize private key from bytes
+ * Deserialize private key from bytes.
  */
-export function privateKeyFromBytes(bytes: Uint8Array): PrivateKey {
+export function privateKeyFromBytes(group: Group, bytes: Uint8Array): PrivateKey {
   const x = group.scalarFromBytes(bytes);
   return { x };
 }
 
 /**
- * Serialize public key to bytes
+ * Serialize public key to bytes.
  */
 export function publicKeyToBytes(pk: PublicKey): Uint8Array {
   return pk.W.toBytes();
 }
 
 /**
- * Deserialize public key from bytes
+ * Deserialize public key from bytes.
  */
-export function publicKeyFromBytes(bytes: Uint8Array): PublicKey {
+export function publicKeyFromBytes(group: Group, bytes: Uint8Array): PublicKey {
   const W = group.elementFromBytes(bytes);
-  return { W };
-}
-
-/**
- * Derive public key from private key
- */
-export function derivePublicKey(sk: PrivateKey): PublicKey {
-  const W = group.generator().multiply(sk.x);
   return { W };
 }

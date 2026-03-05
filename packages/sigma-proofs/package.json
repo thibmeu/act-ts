@@ -1,6 +1,6 @@
 {
   "name": "sigma-proofs",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Sigma Protocols for Zero-Knowledge Proofs (draft-irtf-cfrg-sigma-protocols)",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,5 @@
 /**
- * Property-Based Tests for ACT Protocol (VNEXT)
+ * Property-Based Tests for ACT Protocol (Main)
  *
  * Uses fast-check to verify encoding roundtrips and size invariants.
  */
@@ -13,8 +13,8 @@ import {
   encodePublicKey,
   decodePublicKey,
   EncodingError,
-} from '../src/encoding-vnext.js';
-import type { PrivateKey, PublicKey } from '../src/types-vnext.js';
+} from '../src/encoding.js';
+import type { PrivateKey, PublicKey } from '../src/types.js';
 
 const group = ristretto255;
 
@@ -31,7 +31,7 @@ const arbScalarBytes = fc
     return copy;
   });
 
-describe('Property-Based Tests (VNEXT)', () => {
+describe('Property-Based Tests (Main)', () => {
   describe('Encoding Roundtrips', () => {
     it('PrivateKey roundtrips', () => {
       fc.assert(

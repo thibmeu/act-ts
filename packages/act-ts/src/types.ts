@@ -1,68 +1,56 @@
 /**
- * ACT Core Types
+ * ACT Core Types - VNEXT (sigma-draft-compliance)
  *
- * Type definitions for Anonymous Credit Tokens (draft-schlesinger-cfrg-act-01)
- *
- * Section 2.2: Data Types
- * Section 3.1: System Parameters
+ * Type definitions for Anonymous Credit Tokens per the new draft:
+ * - draft-schlesinger-cfrg-act (sigma-draft-compliance branch)
+ * - draft-irtf-cfrg-sigma-protocols-01
+ * - draft-irtf-cfrg-fiat-shamir-01
  */
 
+import type { Scalar as SigmaScalar, GroupElement as SigmaGroupElement, Group } from 'sigma-proofs';
+
+// Re-export sigma-proofs types for convenience
+export type Scalar = SigmaScalar;
+export type GroupElement = SigmaGroupElement;
+
 /**
- * Scalar: An integer modulo the group order q (Section 2.2)
+ * PRNG interface for deterministic randomness.
  *
- * For ristretto255: q = 2^252 + 27742317777372353535851937790883648493
+ * Production implementations MUST use a CSPRNG (FIPS 186).
+ * Test implementations may use SeededPRNGForTestingOnly for reproducibility.
  */
-export interface Scalar {
-  readonly value: bigint;
-  add(other: Scalar): Scalar;
-  sub(other: Scalar): Scalar;
-  mul(other: Scalar): Scalar;
-  neg(): Scalar;
-  inv(): Scalar;
-  equals(other: Scalar): boolean;
-  isZero(): boolean;
-  toBytes(): Uint8Array;
+export interface PRNG {
+  /** Generate n random bytes */
+  randomBytes(n: number): Uint8Array;
 }
 
 /**
- * Element: A Ristretto255 group element (Section 2.2)
- */
-export interface GroupElement {
-  add(other: GroupElement): GroupElement;
-  sub(other: GroupElement): GroupElement;
-  multiply(scalar: Scalar): GroupElement;
-  equals(other: GroupElement): boolean;
-  isIdentity(): boolean;
-  toBytes(): Uint8Array;
-}
-
-/**
- * System parameters (Section 3.1)
+ * System parameters (Section 3.1 of new draft)
  *
  * - G: Generator of the Ristretto group (implicit, from group)
  * - H1, H2, H3, H4: Additional generators for commitments
  * - L: Bit length for credit values (1 <= L <= 128)
+ * - domainSeparator: Unique deployment identifier
  */
 export interface SystemParams {
+  readonly group: Group;
   readonly H1: GroupElement;
   readonly H2: GroupElement;
   readonly H3: GroupElement;
   readonly H4: GroupElement;
   readonly L: number;
-  readonly domainSeparator: string;
+  readonly domainSeparator: Uint8Array;
 }
 
 /**
- * Issuer's private key (Section 3.2)
+ * Issuer's private key
  */
 export interface PrivateKey {
   readonly x: Scalar;
 }
 
 /**
- * Issuer's public key (Section 3.2)
- *
- * W = G * x
+ * Issuer's public key (W = G * x)
  */
 export interface PublicKey {
   readonly W: GroupElement;
@@ -77,7 +65,7 @@ export interface KeyPair {
 }
 
 /**
- * Credit token held by client (Section 3.3.3, step 20)
+ * Credit token held by client.
  *
  * Contains BBS signature components and credit value:
  * - A: Signature point
@@ -92,83 +80,68 @@ export interface CreditToken {
   readonly e: Scalar;
   readonly k: Scalar;
   readonly r: Scalar;
-  readonly c: bigint; // Credit amount as integer (0 <= c < 2^L)
+  readonly c: bigint;
   readonly ctx: Scalar;
 }
 
 /**
- * Client state during issuance (Section 3.3.1, step 15-16)
+ * Client state during issuance
  */
 export interface IssuanceState {
-  readonly k: Scalar; // Nullifier
-  readonly r: Scalar; // Blinding factor
+  readonly k: Scalar;
+  readonly r: Scalar;
+  readonly ctx: Scalar;
 }
 
 /**
- * Issuance request from client (Section 3.3.1, step 14)
+ * Issuance request (new format: K + pok)
  */
 export interface IssuanceRequest {
-  readonly K: GroupElement; // K = H2 * k + H3 * r
-  readonly gamma: Scalar; // Challenge
-  readonly kBar: Scalar; // Response for k
-  readonly rBar: Scalar; // Response for r
+  readonly K: GroupElement;
+  readonly pok: Uint8Array; // NISigmaProtocol proof bytes
 }
 
 /**
- * Issuance response from issuer (Section 3.3.2, step 29)
+ * Issuance response (new format: A, e, c + pok)
  */
 export interface IssuanceResponse {
-  readonly A: GroupElement; // Signature point
-  readonly e: Scalar; // Signature exponent
-  readonly gammaResp: Scalar; // Challenge
-  readonly z: Scalar; // Response
-  readonly c: bigint; // Credit amount
-  readonly ctx: Scalar; // Context
+  readonly A: GroupElement;
+  readonly e: Scalar;
+  readonly c: bigint;
+  readonly pok: Uint8Array;
 }
 
 /**
- * Client state during spend (Section 3.4.1, step 128)
+ * Client state during spend
  */
 export interface SpendState {
-  readonly kStar: Scalar; // New nullifier (k*)
-  readonly rStar: Scalar; // New blinding factor (r*)
-  readonly m: bigint; // Remaining balance (c - s)
-  readonly ctx: Scalar; // Context
+  readonly kStar: Scalar;
+  readonly rStar: Scalar;
+  readonly m: bigint;
+  readonly ctx: Scalar;
 }
 
 /**
- * Spend proof from client (Section 3.4.1, step 124-127)
+ * Spend proof (new format: k, s, ctx, A', B_bar, Com[] + pok)
  */
 export interface SpendProof {
-  readonly k: Scalar; // Revealed nullifier
-  readonly s: bigint; // Spend amount
-  readonly ctx: Scalar; // Context
-  readonly APrime: GroupElement; // Randomized signature A'
-  readonly BBar: GroupElement; // Randomized B_bar
-  readonly Com: readonly GroupElement[]; // Bit commitments (length L)
-  readonly gamma: Scalar; // Challenge
-  readonly eBar: Scalar;
-  readonly r2Bar: Scalar;
-  readonly r3Bar: Scalar;
-  readonly cBar: Scalar;
-  readonly rBar: Scalar;
-  readonly w00: Scalar;
-  readonly w01: Scalar;
-  readonly gamma0: readonly Scalar[]; // Length L
-  readonly z: readonly (readonly [Scalar, Scalar])[]; // Length L, pairs
-  readonly kBarFinal: Scalar;
-  readonly sBarFinal: Scalar;
+  readonly k: Scalar;
+  readonly s: bigint;
+  readonly ctx: Scalar;
+  readonly APrime: GroupElement;
+  readonly BBar: GroupElement;
+  readonly Com: readonly GroupElement[];
+  readonly pok: Uint8Array;
 }
 
 /**
- * Refund response from issuer (Section 3.4.3, step 28)
+ * Refund response (new format: A*, e*, t + pok)
  */
 export interface Refund {
-  readonly AStar: GroupElement; // New signature point
-  readonly eStar: Scalar; // New signature exponent
-  readonly gamma: Scalar; // Challenge
-  readonly z: Scalar; // Response
-  readonly t: bigint; // Partial return amount
+  readonly AStar: GroupElement;
+  readonly eStar: Scalar;
+  readonly t: bigint;
+  readonly pok: Uint8Array;
 }
 
 /**
@@ -195,4 +168,5 @@ export enum ACTErrorCode {
   ScalarOutOfRange = 8,
   IdentityPoint = 9,
   InvalidParameter = 10,
+  InvalidRefundAmount = 11,
 }

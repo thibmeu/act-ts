@@ -1,14 +1,13 @@
 /**
- * ACT Token Issuance Protocol
+ * ACT Token Issuance Protocol - VNEXT (sigma-draft-compliance)
  *
  * Section 3.3: Token Issuance
  *
- * Interactive protocol between client and issuer:
- * 1. Client: IssueRequest - creates commitment K and proof of knowledge
- * 2. Issuer: IssueResponse - creates BBS signature and proof of correctness
- * 3. Client: VerifyIssuance - verifies response and constructs token
+ * Uses NISigmaProtocol from draft-irtf-cfrg-fiat-shamir for Fiat-Shamir transform.
+ * Uses LinearRelation from draft-irtf-cfrg-sigma-protocols for proof structure.
  */
 
+import { LinearRelation, NISigmaProtocol, appendPedersen, appendDleq } from 'sigma-proofs';
 import type {
   SystemParams,
   PrivateKey,
@@ -18,54 +17,112 @@ import type {
   IssuanceState,
   CreditToken,
   Scalar,
+  PRNG,
 } from './types.js';
 import { ACTError, ACTErrorCode } from './types.js';
-import { group } from './group.js';
-import { SimpleTranscript, Transcript } from './transcript.js';
+
+/**
+ * Concatenate Uint8Arrays
+ */
+function concat(...arrays: Uint8Array[]): Uint8Array {
+  const totalLen = arrays.reduce((sum, arr) => sum + arr.length, 0);
+  const result = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
+}
+
+/**
+ * Encode scalar to bytes for session ID
+ */
+function encodeScalar(s: Scalar): Uint8Array {
+  return s.toBytes();
+}
+
+/**
+ * Encode bigint credit amount to scalar bytes
+ */
+function encodeBigint(group: { scalarFromBigint(n: bigint): Scalar }, c: bigint): Uint8Array {
+  return group.scalarFromBigint(c).toBytes();
+}
+
+/**
+ * Build session ID for issuance request.
+ *
+ * session_id = domain_separator + "request"
+ */
+function requestSessionId(params: SystemParams): Uint8Array {
+  const label = new Uint8Array([114, 101, 113, 117, 101, 115, 116]); // "request"
+  return concat(params.domainSeparator, label);
+}
+
+/**
+ * Build session ID for issuance response.
+ *
+ * session_id = domain_separator + "respond" + Encode(c) + Encode(ctx)
+ */
+function respondSessionId(params: SystemParams, c: bigint, ctx: Scalar): Uint8Array {
+  const label = new Uint8Array([114, 101, 115, 112, 111, 110, 100]); // "respond"
+  return concat(params.domainSeparator, label, encodeBigint(params.group, c), encodeScalar(ctx));
+}
 
 /**
  * Client: IssueRequest (Section 3.3.1)
  *
- * Creates an issuance request with commitment K and proof of knowledge of k, r.
+ * Creates an issuance request with commitment K and proof of knowledge of (k, r).
  *
- * @param params - System parameters (H1-H4)
- * @returns Tuple of (request, state) where state must be kept secret
+ * Proof statement: PoK{(k, r): K = k*H2 + r*H3}
+ *
+ * @param params - System parameters
+ * @param ctx - Request context (determined by issuer/client agreement)
+ * @param rng - Random number generator
+ * @returns Tuple of (request, state)
  */
-export function issueRequest(params: SystemParams): [IssuanceRequest, IssuanceState] {
-  // Step 1-2: Sample nullifier k and blinding factor r
-  const k = group.randomScalar();
-  const r = group.randomScalar();
+export function issueRequest(
+  params: SystemParams,
+  ctx: Scalar,
+  rng: PRNG
+): [IssuanceRequest, IssuanceState] {
+  const { group, H2, H3 } = params;
 
-  // Step 3: Compute commitment K = H2 * k + H3 * r
-  const K = group.msm([k, r], [params.H2, params.H3]);
+  // Sample nullifier k and blinding factor r
+  const kBytes = rng.randomBytes(group.scalarSize + 16);
+  const rBytes = rng.randomBytes(group.scalarSize + 16);
+  const k = group.hashToScalar(kBytes);
+  const r = group.hashToScalar(rBytes);
 
-  // Steps 4-7: Generate proof of knowledge
-  const kPrime = group.randomScalar();
-  const rPrime = group.randomScalar();
-  const K1 = group.msm([kPrime, rPrime], [params.H2, params.H3]);
+  // Compute commitment K = k*H2 + r*H3
+  const K = group.msm([k, r], [H2, H3]);
 
-  // Steps 8-11: Fiat-Shamir challenge
-  const transcript = new SimpleTranscript('request');
-  transcript.addElement(K);
-  transcript.addElement(K1);
-  const gamma = transcript.getChallenge();
+  // Build proof statement: K = k*H2 + r*H3
+  const relation = new LinearRelation(group);
+  const scalarVars = relation.allocateScalars(2);
+  const kVar = scalarVars[0]!;
+  const rVar = scalarVars[1]!;
+  const elemVars = relation.allocateElements(3);
+  const h2Idx = elemVars[0]!;
+  const h3Idx = elemVars[1]!;
+  const kIdx = elemVars[2]!;
+  relation.setElements([
+    [h2Idx, H2],
+    [h3Idx, H3],
+    [kIdx, K],
+  ]);
+  appendPedersen(relation, h2Idx, h3Idx, kIdx, kVar, rVar);
 
-  // Steps 12-13: Compute responses
-  const kBar = kPrime.add(gamma.mul(k));
-  const rBar = rPrime.add(gamma.mul(r));
+  // Generate NI proof (NISigmaProtocol uses internal randomness)
+  const sessionId = requestSessionId(params);
+  const prover = new NISigmaProtocol(relation, { sessionId });
+  const proof = prover.prove([k, r]);
 
-  // Steps 14-16: Return request and state
-  const request: IssuanceRequest = {
-    K,
-    gamma,
-    kBar,
-    rBar,
-  };
+  // Serialize proof
+  const pok = serializeProof(proof, group.scalarSize);
 
-  const state: IssuanceState = {
-    k,
-    r,
-  };
+  const request: IssuanceRequest = { K, pok };
+  const state: IssuanceState = { k, r, ctx };
 
   return [request, state];
 }
@@ -73,14 +130,17 @@ export function issueRequest(params: SystemParams): [IssuanceRequest, IssuanceSt
 /**
  * Issuer: IssueResponse (Section 3.3.2)
  *
- * Verifies the client's proof, creates a BBS signature, and returns a proof
- * of correct computation.
+ * Verifies client's proof, creates BBS signature, returns proof of correctness.
+ *
+ * Proof statement: DLEQ{(sk+e): A = (sk+e)^(-1)*X_A AND G = (sk+e)^(-1)*X_G}
+ * Equivalently: PoK{(sk+e): X_A = (sk+e)*A AND X_G = (sk+e)*G}
  *
  * @param params - System parameters
  * @param sk - Issuer's private key
  * @param request - Client's issuance request
- * @param c - Credit amount to issue (must be > 0 and < 2^L)
- * @param ctx - Request context (application-specific)
+ * @param c - Credit amount (>= 0 and < 2^L)
+ * @param ctx - Request context
+ * @param rng - Random number generator
  * @returns Issuance response
  */
 export function issueResponse(
@@ -88,90 +148,100 @@ export function issueResponse(
   sk: PrivateKey,
   request: IssuanceRequest,
   c: bigint,
-  ctx: Scalar
+  ctx: Scalar,
+  rng: PRNG
 ): IssuanceResponse {
-  // Validate credit amount
-  if (c <= 0n) {
-    throw new ACTError('Credit amount must be positive', ACTErrorCode.InvalidAmount);
+  const { group, H1, H2, H3, H4, L } = params;
+  const maxValue = 1n << BigInt(L);
+
+  // Validate credit amount (new draft allows c >= 0)
+  if (c < 0n) {
+    throw new ACTError('Credit amount must be non-negative', ACTErrorCode.InvalidAmount);
   }
-  if (c >= 1n << BigInt(params.L)) {
+  if (c >= maxValue) {
     throw new ACTError(
-      `Credit amount ${c} exceeds maximum ${(1n << BigInt(params.L)) - 1n}`,
+      `Credit amount ${c} exceeds maximum ${maxValue - 1n}`,
       ACTErrorCode.AmountTooBig
     );
   }
 
-  // Steps 1-8: Verify proof of knowledge
-  const { K, gamma, kBar, rBar } = request;
+  // Verify client's proof of knowledge
+  const { K, pok } = request;
 
-  // Step 3: Recompute K1 = H2 * k_bar + H3 * r_bar - K * gamma
-  const K1 = group.msm([kBar, rBar], [params.H2, params.H3]).sub(K.multiply(gamma));
+  const verifyRelation = new LinearRelation(group);
+  const verifyScalars = verifyRelation.allocateScalars(2);
+  const kVarV = verifyScalars[0]!;
+  const rVarV = verifyScalars[1]!;
+  const verifyElems = verifyRelation.allocateElements(3);
+  const h2IdxV = verifyElems[0]!;
+  const h3IdxV = verifyElems[1]!;
+  const kIdxV = verifyElems[2]!;
+  verifyRelation.setElements([
+    [h2IdxV, H2],
+    [h3IdxV, H3],
+    [kIdxV, K],
+  ]);
+  appendPedersen(verifyRelation, h2IdxV, h3IdxV, kIdxV, kVarV, rVarV);
 
-  // Steps 4-6: Recompute challenge
-  const transcript = new SimpleTranscript('request');
-  transcript.addElement(K);
-  transcript.addElement(K1);
-  const gammaCheck = transcript.getChallenge();
+  const verifySessionId = requestSessionId(params);
+  const verifier = new NISigmaProtocol(verifyRelation, { sessionId: verifySessionId });
+  const clientProof = deserializeProof(group, pok, 2);
 
-  // Step 7-8: Verify challenge
-  if (!gamma.equals(gammaCheck)) {
+  if (!verifier.verify(clientProof)) {
     throw new ACTError('Invalid issuance request proof', ACTErrorCode.InvalidIssuanceRequestProof);
   }
 
-  // Steps 9-11: Create BBS signature
-  // e <- Zq
-  const e = group.randomScalar();
+  // Create BBS signature
+  // e <- Zq (random)
+  const eBytes = rng.randomBytes(group.scalarSize + 16);
+  const e = group.hashToScalar(eBytes);
 
-  // A = (G + H1 * c + H4 * ctx + K) * (1/(e + sk.x))
+  // X_A = G + c*H1 + ctx*H4 + K
   const G = group.generator();
   const cScalar = group.scalarFromBigint(c);
-  const X_A = group.msm([group.one(), cScalar, ctx, group.one()], [G, params.H1, params.H4, K]);
-  const invDenom = e.add(sk.x).inv();
-  const A = X_A.multiply(invDenom);
+  const one = group.scalarFromBigint(1n);
+  const X_A = group.msm([one, cScalar, ctx, one], [G, H1, H4, K]);
 
-  // Steps 12-15: Generate proof of correct computation
-  const alpha = group.randomScalar();
-  const Y_A = A.multiply(alpha);
-  const Y_G = G.multiply(alpha);
+  // A = X_A * (1/(e + sk.x))
+  const skPlusE = sk.x.add(e);
+  const invSkPlusE = skPlusE.inv();
+  const A = X_A.multiply(invSkPlusE);
 
-  // Step 16-17: X_A already computed; X_G = G * e + pk.W
-  const pk_W = G.multiply(sk.x); // pk.W
-  const X_G = G.multiply(e).add(pk_W);
+  // X_G = (e + sk.x) * G
+  const X_G = G.multiply(skPlusE);
 
-  // Steps 18-28: Fiat-Shamir for response proof
-  const transcriptResp = new Transcript('respond', params);
-  transcriptResp.addCredit(c);
-  transcriptResp.addScalar(ctx);
-  transcriptResp.addScalar(e);
-  transcriptResp.addElement(A);
-  transcriptResp.addElement(X_A);
-  transcriptResp.addElement(X_G);
-  transcriptResp.addElement(Y_A);
-  transcriptResp.addElement(Y_G);
-  const gammaResp = transcriptResp.getChallenge();
+  // Build DLEQ proof: PoK{(d): X_A = d*A AND X_G = d*G} where d = sk+e
+  const respRelation = new LinearRelation(group);
+  const respScalars = respRelation.allocateScalars(1);
+  const dVar = respScalars[0]!;
+  const respElems = respRelation.allocateElements(4);
+  const gIdx = respElems[0]!;
+  const aIdx = respElems[1]!;
+  const xaIdx = respElems[2]!;
+  const xgIdx = respElems[3]!;
+  respRelation.setElements([
+    [gIdx, G],
+    [aIdx, A],
+    [xaIdx, X_A],
+    [xgIdx, X_G],
+  ]);
+  appendDleq(respRelation, aIdx, gIdx, xaIdx, xgIdx, dVar);
 
-  // Step 28: z = gamma_resp * (sk + e) + alpha
-  const z = gammaResp.mul(sk.x.add(e)).add(alpha);
+  const respSessionId = respondSessionId(params, c, ctx);
+  const respProver = new NISigmaProtocol(respRelation, { sessionId: respSessionId });
+  const respProof = respProver.prove([skPlusE]);
+  const respPok = serializeProof(respProof, group.scalarSize);
 
-  // Step 29-30: Return response
-  return {
-    A,
-    e,
-    gammaResp,
-    z,
-    c,
-    ctx,
-  };
+  return { A, e, c, pok: respPok };
 }
 
 /**
  * Client: VerifyIssuance (Section 3.3.3)
  *
- * Verifies the issuer's response and constructs the credit token.
+ * Verifies issuer's response and constructs credit token.
  *
  * @param params - System parameters
  * @param pk - Issuer's public key
- * @param request - The issuance request that was sent
  * @param response - Issuer's response
  * @param state - Client state from request generation
  * @returns Credit token
@@ -179,101 +249,103 @@ export function issueResponse(
 export function verifyIssuance(
   params: SystemParams,
   pk: PublicKey,
-  request: IssuanceRequest,
   response: IssuanceResponse,
   state: IssuanceState
 ): CreditToken {
-  const { K } = request;
-  const { A, e, gammaResp, z, c, ctx } = response;
-  const { k, r } = state;
+  const { group, H1, H2, H3, H4, L } = params;
+  const { A, e, c, pok } = response;
+  const { k, r, ctx } = state;
+  const maxValue = 1n << BigInt(L);
 
   // Validate credit amount
-  if (c >= 1n << BigInt(params.L)) {
+  if (c >= maxValue) {
     throw new ACTError(`Credit amount ${c} exceeds maximum`, ACTErrorCode.AmountTooBig);
   }
 
-  // Steps 5-6: Recompute X_A and X_G
+  // Reconstruct K = k*H2 + r*H3
+  const K = group.msm([k, r], [H2, H3]);
+
+  // Reconstruct X_A = G + c*H1 + ctx*H4 + K
   const G = group.generator();
   const cScalar = group.scalarFromBigint(c);
+  const one = group.scalarFromBigint(1n);
+  const X_A = group.msm([one, cScalar, ctx, one], [G, H1, H4, K]);
 
-  // X_A = G + H1 * c + H4 * ctx + K
-  const X_A = group.msm([group.one(), cScalar, ctx, group.one()], [G, params.H1, params.H4, K]);
-
-  // X_G = G * e + pk.W
+  // Reconstruct X_G = e*G + pk.W
   const X_G = G.multiply(e).add(pk.W);
 
-  // Steps 7-8: Verify proof
-  // Y_A = A * z - X_A * gamma_resp
-  const Y_A = A.multiply(z).sub(X_A.multiply(gammaResp));
+  // Verify DLEQ proof
+  const dleqRelation = new LinearRelation(group);
+  const dleqScalars = dleqRelation.allocateScalars(1);
+  const dVarV = dleqScalars[0]!;
+  const dleqElems = dleqRelation.allocateElements(4);
+  const gIdxV = dleqElems[0]!;
+  const aIdxV = dleqElems[1]!;
+  const xaIdxV = dleqElems[2]!;
+  const xgIdxV = dleqElems[3]!;
+  dleqRelation.setElements([
+    [gIdxV, G],
+    [aIdxV, A],
+    [xaIdxV, X_A],
+    [xgIdxV, X_G],
+  ]);
+  appendDleq(dleqRelation, aIdxV, gIdxV, xaIdxV, xgIdxV, dVarV);
 
-  // Y_G = G * z - X_G * gamma_resp
-  const Y_G = G.multiply(z).sub(X_G.multiply(gammaResp));
+  const verifySessionId = respondSessionId(params, c, ctx);
+  const verifier = new NISigmaProtocol(dleqRelation, { sessionId: verifySessionId });
+  const issuerProof = deserializeProof(group, pok, 1);
 
-  // Steps 9-18: Recompute challenge
-  const transcriptResp = new Transcript('respond', params);
-  transcriptResp.addCredit(c);
-  transcriptResp.addScalar(ctx);
-  transcriptResp.addScalar(e);
-  transcriptResp.addElement(A);
-  transcriptResp.addElement(X_A);
-  transcriptResp.addElement(X_G);
-  transcriptResp.addElement(Y_A);
-  transcriptResp.addElement(Y_G);
-  const gammaCheck = transcriptResp.getChallenge();
-
-  // Steps 18-19: Verify challenge
-  if (!gammaResp.equals(gammaCheck)) {
+  if (!verifier.verify(issuerProof)) {
     throw new ACTError(
       'Invalid issuance response proof',
       ACTErrorCode.InvalidIssuanceResponseProof
     );
   }
 
-  // Steps 20-21: Construct token
-  return {
-    A,
-    e,
-    k,
-    r,
-    c,
-    ctx,
-  };
+  // Construct token
+  return { A, e, k, r, c, ctx };
 }
 
 /**
- * Full issuance flow for client
+ * Serialize NISigmaProtocol proof to bytes.
  *
- * Convenience function that combines request and verification.
- * The caller must handle the network round-trip to get the response.
+ * Format: challenge (Ns bytes) || response[0] (Ns bytes) || ... || response[n-1] (Ns bytes)
  */
-export interface IssuanceFlow {
-  /** Create the initial request */
-  createRequest(): [IssuanceRequest, IssuanceState];
-  /** Verify response and get token */
-  verifyResponse(response: IssuanceResponse, state: IssuanceState): CreditToken;
+export function serializeProof(
+  proof: { challenge: Scalar; response: readonly Scalar[] },
+  scalarSize: number
+): Uint8Array {
+  const parts: Uint8Array[] = [proof.challenge.toBytes()];
+  for (const r of proof.response) {
+    parts.push(r.toBytes());
+  }
+  return concat(...parts);
 }
 
-export function createIssuanceFlow(params: SystemParams, pk: PublicKey): IssuanceFlow {
-  return {
-    createRequest(): [IssuanceRequest, IssuanceState] {
-      return issueRequest(params);
-    },
-    verifyResponse(response: IssuanceResponse, state: IssuanceState): CreditToken {
-      // Need to reconstruct request from state for verification
-      const k = state.k;
-      const r = state.r;
-      const K = group.msm([k, r], [params.H2, params.H3]);
+/**
+ * Deserialize NISigmaProtocol proof from bytes.
+ */
+export function deserializeProof(
+  group: { scalarFromBytes(bytes: Uint8Array): Scalar; scalarSize: number },
+  pok: Uint8Array,
+  numResponses: number
+): { challenge: Scalar; response: Scalar[] } {
+  const scalarSize = group.scalarSize;
+  const expectedLen = scalarSize * (1 + numResponses);
+  if (pok.length !== expectedLen) {
+    throw new ACTError(
+      `Invalid proof length: expected ${expectedLen}, got ${pok.length}`,
+      ACTErrorCode.InvalidIssuanceRequestProof
+    );
+  }
 
-      // We don't have the original gamma/kBar/rBar but verifyIssuance
-      // only needs K from the request
-      const mockRequest: IssuanceRequest = {
-        K,
-        gamma: group.zero(), // Not used in verifyIssuance
-        kBar: group.zero(),
-        rBar: group.zero(),
-      };
+  const challenge = group.scalarFromBytes(pok.slice(0, scalarSize));
+  const response: Scalar[] = [];
+  for (let i = 0; i < numResponses; i++) {
+    const start = scalarSize * (1 + i);
+    const end = start + scalarSize;
+    response.push(group.scalarFromBytes(pok.slice(start, end)));
+  }
 
-      return verifyIssuance(params, pk, mockRequest, response, state);
-    },
-  };
+  return { challenge, response };
 }

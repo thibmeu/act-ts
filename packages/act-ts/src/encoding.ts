@@ -29,7 +29,7 @@ import type {
   SpendState,
   PrivateKey,
   PublicKey,
-} from './types-vnext.js';
+} from './types.js';
 
 /** Error type for TLS encoding/decoding */
 export class EncodingError extends Error {

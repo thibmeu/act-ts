@@ -65,7 +65,7 @@ import {
   verifyAndRefund,
   constructRefundToken,
   WebCryptoPRNG,
-} from 'act-ts/vnext';
+} from 'act-ts';
 
 // Setup
 const group = ristretto255;
@@ -106,24 +106,23 @@ packages/
   act-ts/           # Core ACT protocol
 docs/
   ARCHITECTURE.md   # Technical design
-  VNEXT_MIGRATION.md # Upcoming spec changes
 ```
 
 ## Status
 
-| Package      | Status                         | Tests       |
-| ------------ | ------------------------------ | ----------- |
-| sigma-proofs | Complete                       | 119 passing |
-| act-ts       | vnext (sigma-draft-compliance) | 121 passing |
+| Package      | Status | Tests       |
+| ------------ | ------ | ----------- |
+| sigma-proofs | v0.1.0 | 119 passing |
+| act-ts       | v0.1.0 | 121 passing |
 
 ### Roadmap
 
 - [x] sigma-proofs: LinearRelation, SchnorrProof, NISigmaProtocol
 - [x] sigma-proofs: SHAKE128 Fiat-Shamir (draft-irtf-cfrg-fiat-shamir-01)
 - [x] sigma-proofs: BLS12-381 G1 ciphersuite
-- [x] act-ts: Issuance, spending, range proofs (current draft)
-- [x] act-ts: vnext with algebraic range proofs (replacing CDS OR-proofs)
-- [x] act-ts: TLS wire format encoding (replacing CBOR)
+- [x] act-ts: Issuance, spending, range proofs (draft-schlesinger-cfrg-act-01)
+- [x] act-ts: Algebraic range proofs
+- [x] act-ts: TLS wire format encoding
 - [x] act-ts: Horner optimization for pow2-weighted sums
 - [ ] sigma-proofs: Spec test vector interop (transcript alignment with POC)
 - [ ] act-ts: Interop testing with Rust reference implementation

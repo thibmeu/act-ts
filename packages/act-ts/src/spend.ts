@@ -1,13 +1,13 @@
 /**
- * ACT Token Spending Protocol
+ * ACT Token Spending Protocol - VNEXT (sigma-draft-compliance)
  *
  * Section 3.4: Token Spending
  *
- * Allows client to spend s credits from a token with c credits (0 <= s <= c).
- * Uses range proofs with bit decomposition to prove c - s >= 0 without
- * revealing c.
+ * Uses algebraic binary constraints for range proofs instead of CDS OR-proofs.
+ * Uses NISigmaProtocol from draft-irtf-cfrg-fiat-shamir for Fiat-Shamir transform.
  */
 
+import { LinearRelation, NISigmaProtocol, appendDleq, type Group } from 'sigma-proofs';
 import type {
   SystemParams,
   PrivateKey,
@@ -18,16 +18,89 @@ import type {
   Refund,
   Scalar,
   GroupElement,
+  PRNG,
 } from './types.js';
 import { ACTError, ACTErrorCode } from './types.js';
-import { group } from './group.js';
-import { Transcript } from './transcript.js';
+import { serializeProof, deserializeProof } from './issuance.js';
 import { toHex } from './rng.js';
 
 /**
- * BitDecompose (Section 3.5.4)
+ * Cached common scalars per group to avoid redundant scalarFromBigint() calls.
+ * Uses WeakMap to allow GC of unused groups.
+ */
+const cachedOne = new WeakMap<Group, Scalar>();
+const cachedZero = new WeakMap<Group, Scalar>();
+
+/** Get cached scalar 1 for group */
+function getOne(group: Group): Scalar {
+  let one = cachedOne.get(group);
+  if (one === undefined) {
+    one = group.scalarFromBigint(1n);
+    cachedOne.set(group, one);
+  }
+  return one;
+}
+
+/** Get cached scalar 0 for group */
+function getZero(group: Group): Scalar {
+  let zero = cachedZero.get(group);
+  if (zero === undefined) {
+    zero = group.scalarFromBigint(0n);
+    cachedZero.set(group, zero);
+  }
+  return zero;
+}
+
+/**
+ * Concatenate Uint8Arrays
+ */
+function concat(...arrays: Uint8Array[]): Uint8Array {
+  const totalLen = arrays.reduce((sum, arr) => sum + arr.length, 0);
+  const result = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
+}
+
+/**
+ * Encode scalar to bytes
+ */
+function encodeScalar(s: Scalar): Uint8Array {
+  return s.toBytes();
+}
+
+/**
+ * Build session ID for spend proof.
  *
- * Decomposes a value into L bits (LSB-first order).
+ * session_id = domain_separator + "spend" + Encode(k) + Encode(ctx)
+ */
+function spendSessionId(params: SystemParams, k: Scalar, ctx: Scalar): Uint8Array {
+  const label = new Uint8Array([115, 112, 101, 110, 100]); // "spend"
+  return concat(params.domainSeparator, label, encodeScalar(k), encodeScalar(ctx));
+}
+
+/**
+ * Build session ID for refund proof.
+ *
+ * session_id = domain_separator + "refund" + Encode(e) + Encode(t) + Encode(ctx)
+ */
+function refundSessionId(params: SystemParams, e: Scalar, t: bigint, ctx: Scalar): Uint8Array {
+  const label = new Uint8Array([114, 101, 102, 117, 110, 100]); // "refund"
+  const tScalar = params.group.scalarFromBigint(t);
+  return concat(
+    params.domainSeparator,
+    label,
+    encodeScalar(e),
+    encodeScalar(tScalar),
+    encodeScalar(ctx)
+  );
+}
+
+/**
+ * Decompose value into L bits (LSB-first).
  */
 function bitDecompose(value: bigint, L: number): bigint[] {
   const bits: bigint[] = [];
@@ -38,26 +111,328 @@ function bitDecompose(value: bigint, L: number): bigint[] {
 }
 
 /**
+ * Generate a non-zero random scalar.
+ */
+function randomNonZeroScalar(group: Group, rng: PRNG): Scalar {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const bytes = rng.randomBytes(group.scalarSize + 16);
+    const scalar = group.hashToScalar(bytes);
+    if (!scalar.isZero()) {
+      return scalar;
+    }
+  }
+  throw new Error('Failed to generate non-zero scalar after 100 attempts');
+}
+
+/**
+ * Compute sum(2^j * P[j]) for j=0..n-1 using Horner's method.
+ *
+ * Horner's method: P[0] + 2*(P[1] + 2*(P[2] + ... + 2*P[n-1]))
+ * This converts n-point MSM to (n-1) doublings + (n-1) additions.
+ *
+ * Performance: For L=64, naive approach does 64 scalar muls + 64 adds.
+ * Horner does 63 doublings + 63 adds. Since doubling ≈ 0.5x cost of
+ * scalar mul, this is ~2x faster.
+ *
+ * @param points - Array of group elements [P[0], P[1], ..., P[n-1]]
+ * @returns sum(2^j * P[j]) for j=0..n-1
+ */
+function pow2WeightedSum(points: readonly GroupElement[]): GroupElement {
+  if (points.length === 0) {
+    throw new Error('pow2WeightedSum requires at least one point');
+  }
+  if (points.length === 1) {
+    const p0 = points[0];
+    if (!p0) throw new Error('Missing point at index 0');
+    return p0;
+  }
+
+  // Start from the last element
+  const lastIdx = points.length - 1;
+  const lastPoint = points[lastIdx];
+  if (!lastPoint) throw new Error(`Missing point at index ${lastIdx}`);
+  let result = lastPoint;
+
+  // Work backwards: result = P[j] + 2*result
+  for (let j = points.length - 2; j >= 0; j--) {
+    const pj = points[j];
+    if (!pj) throw new Error(`Missing point at index ${j}`);
+    result = pj.add(result.add(result)); // P[j] + 2*result
+  }
+
+  return result;
+}
+
+/**
+ * Compute sum(2^j * s[j]) for j=0..n-1 using Horner's method.
+ *
+ * Horner's method: s[0] + 2*(s[1] + 2*(s[2] + ... + 2*s[n-1]))
+ *
+ * @param scalars - Array of scalars [s[0], s[1], ..., s[n-1]]
+ * @returns sum(2^j * s[j]) for j=0..n-1
+ */
+function pow2WeightedScalarSum(scalars: readonly Scalar[]): Scalar {
+  if (scalars.length === 0) {
+    throw new Error('pow2WeightedScalarSum requires at least one scalar');
+  }
+  if (scalars.length === 1) {
+    const s0 = scalars[0];
+    if (!s0) throw new Error('Missing scalar at index 0');
+    return s0;
+  }
+
+  // Start from the last element
+  const lastIdx = scalars.length - 1;
+  const lastScalar = scalars[lastIdx];
+  if (!lastScalar) throw new Error(`Missing scalar at index ${lastIdx}`);
+  let result = lastScalar;
+
+  // Work backwards: result = s[j] + 2*result
+  for (let j = scalars.length - 2; j >= 0; j--) {
+    const sj = scalars[j];
+    if (!sj) throw new Error(`Missing scalar at index ${j}`);
+    result = sj.add(result.add(result)); // s[j] + 2*result
+  }
+
+  return result;
+}
+
+/**
+ * Build the common spend proof relation structure.
+ *
+ * This builds the relation for both prover and verifier to ensure they match.
+ * The key elements (APrime, BBar, Com, ABar) are passed as parameters.
+ */
+function buildSpendRelation(
+  params: SystemParams,
+  APrime: GroupElement,
+  BBar: GroupElement,
+  ABar: GroupElement,
+  Com: readonly GroupElement[],
+  k: Scalar,
+  ctx: Scalar,
+  s: bigint
+): {
+  relation: LinearRelation;
+  scalarVarCount: number;
+  eVar: number;
+  r2Var: number;
+  r3Var: number;
+  cVar: number;
+  rVar: number;
+  bVars: number[];
+  sComVars: number[];
+  s2Vars: number[];
+  kStarVar: number;
+  kStar2Var: number;
+} {
+  const { group, H1, H2, H3, H4, L } = params;
+  const G = group.generator();
+  const one = getOne(group);
+
+  // H1' = G + k*H2 + ctx*H4 (public, derived from k and ctx in proof)
+  const sScalar = group.scalarFromBigint(s);
+
+  // K' = sum(2^j * Com[j]) using Horner's method
+  const KPrime = pow2WeightedSum(Com);
+
+  // ComTotal = s*H1 + K'
+  // Handle s=0 case (multiply by zero scalar not allowed)
+  const ComTotal = s === 0n ? KPrime : H1.multiply(sScalar).add(KPrime);
+  const H1Prime = group.msm([one, k, ctx], [G, H2, H4]); // H1' = G + k*H2 + ctx*H4
+
+  const relation = new LinearRelation(group);
+
+  // === Scalar allocation (matches Rust order) ===
+  // Eq1: [e, r2]
+  // Eq2: [r3, c, r]
+  // Range proof: b[0..L-1], sCom[0..L-1], s2[0..L-1], kStar, kStar2
+  // Total: 2 + 3 + 3*L + 2 = 7 + 3*L (same count, different order)
+  const eq1Scalars = relation.allocateScalars(2);
+  const eVar = eq1Scalars[0]!;
+  const r2Var = eq1Scalars[1]!;
+
+  const eq2Scalars = relation.allocateScalars(3);
+  const r3Var = eq2Scalars[0]!;
+  const cVar = eq2Scalars[1]!;
+  const rVar = eq2Scalars[2]!;
+
+  // Range proof scalars
+  const bVars = relation.allocateScalars(L);
+  const sComVars = relation.allocateScalars(L);
+  const s2Vars = relation.allocateScalars(L);
+  const kstarScalars = relation.allocateScalars(2);
+  const kStarVar = kstarScalars[0]!;
+  const kStar2Var = kstarScalars[1]!;
+
+  const scalarVarCount = 7 + 3 * L;
+
+  // === Element allocation (matches Rust order exactly) ===
+
+  // Eq1: allocate 3 elements [neg_a_prime, b_bar, a_bar]
+  const eq1Elems = relation.allocateElements(3);
+  const negAPrimeIdx = eq1Elems[0]!;
+  const bBarIdx = eq1Elems[1]!;
+  const aBarIdx = eq1Elems[2]!;
+
+  // Equation 1: ABar = e * (-A') + r2 * BBar
+  relation.appendEquation(aBarIdx, [
+    [eVar, negAPrimeIdx],
+    [r2Var, bBarIdx],
+  ]);
+  relation.setElements([
+    [negAPrimeIdx, APrime.negate()],
+    [bBarIdx, BBar],
+    [aBarIdx, ABar],
+  ]);
+
+  // Eq2: allocate 3 elements [neg_h1, neg_h3, h1_prime]
+  const eq2Elems = relation.allocateElements(3);
+  const negH1Idx = eq2Elems[0]!;
+  const negH3Idx = eq2Elems[1]!;
+  const h1PrimeIdx = eq2Elems[2]!;
+
+  // Equation 2: H1' = r3 * BBar + c * (-H1) + r * (-H3)
+  relation.appendEquation(h1PrimeIdx, [
+    [r3Var, bBarIdx],
+    [cVar, negH1Idx],
+    [rVar, negH3Idx],
+  ]);
+  relation.setElements([
+    [negH1Idx, H1.negate()],
+    [negH3Idx, H3.negate()],
+    [h1PrimeIdx, H1Prime],
+  ]);
+
+  // Range proof: allocate shared elements [h1_rp, h2_rp, h3_rp]
+  const rpElems = relation.allocateElements(3);
+  const h1RpIdx = rpElems[0]!;
+  const h2RpIdx = rpElems[1]!;
+  const h3RpIdx = rpElems[2]!;
+  relation.setElements([
+    [h1RpIdx, H1],
+    [h2RpIdx, H2],
+    [h3RpIdx, H3],
+  ]);
+
+  // Allocate Com element variables (one at a time, like Rust's allocate_element_with)
+  const comIndices: number[] = [];
+  for (let j = 0; j < L; j++) {
+    const comIdx = relation.allocateElements(1)[0]!;
+    comIndices.push(comIdx);
+    relation.setElements([[comIdx, Com[j]!]]);
+  }
+
+  // Bit 0: opening  Com[0] = b[0]*H1 + kstar*H2 + s_com[0]*H3
+  relation.appendEquation(comIndices[0]!, [
+    [bVars[0]!, h1RpIdx],
+    [kStarVar, h2RpIdx],
+    [sComVars[0]!, h3RpIdx],
+  ]);
+  // Bit 0: binary  Com[0] = b[0]*Com[0] + k2*H2 + s2[0]*H3
+  relation.appendEquation(comIndices[0]!, [
+    [bVars[0]!, comIndices[0]!],
+    [kStar2Var, h2RpIdx],
+    [s2Vars[0]!, h3RpIdx],
+  ]);
+
+  // Bits 1..L-1
+  for (let j = 1; j < L; j++) {
+    const comIdx = comIndices[j]!;
+    const bVar = bVars[j]!;
+    const sComVar = sComVars[j]!;
+    const s2Var = s2Vars[j]!;
+
+    // Opening: Com[j] = b[j]*H1 + s_com[j]*H3
+    relation.appendEquation(comIdx, [
+      [bVar, h1RpIdx],
+      [sComVar, h3RpIdx],
+    ]);
+    // Binary: Com[j] = b[j]*Com[j] + s2[j]*H3
+    relation.appendEquation(comIdx, [
+      [bVar, comIdx],
+      [s2Var, h3RpIdx],
+    ]);
+  }
+
+  // === Consistency equation: ComTotal = c*H1 + kstar*H2 + Σ s_com[j]*(H3*2^j) ===
+
+  // Allocate 3 elements [h1_con, h2_con, com_total]
+  const conElems = relation.allocateElements(3);
+  const h1ConIdx = conElems[0]!;
+  const h2ConIdx = conElems[1]!;
+  const comTotalIdx = conElems[2]!;
+  relation.setElements([
+    [h1ConIdx, H1],
+    [h2ConIdx, H2],
+    [comTotalIdx, ComTotal],
+  ]);
+
+  // Build H3*2^j powers using doubling chain
+  const h3Powers: GroupElement[] = [H3];
+  for (let j = 1; j < L; j++) {
+    const prev = h3Powers[j - 1];
+    if (!prev) throw new Error(`Missing h3Powers at index ${j - 1}`);
+    h3Powers.push(prev.add(prev));
+  }
+
+  // Build consistency equation terms
+  const coefficients: Array<[number, number]> = [
+    [cVar, h1ConIdx],
+    [kStarVar, h2ConIdx],
+  ];
+
+  for (let j = 0; j < L; j++) {
+    const h3Times2j = h3Powers[j];
+    if (!h3Times2j) throw new Error(`Missing h3Powers at index ${j}`);
+    const h3CoeffIdx = relation.allocateElements(1)[0]!;
+    relation.setElements([[h3CoeffIdx, h3Times2j]]);
+    coefficients.push([sComVars[j]!, h3CoeffIdx]);
+  }
+
+  relation.appendEquation(comTotalIdx, coefficients);
+
+  return {
+    relation,
+    scalarVarCount,
+    eVar,
+    r2Var,
+    r3Var,
+    cVar,
+    rVar,
+    bVars,
+    sComVars,
+    s2Vars,
+    kStarVar,
+    kStar2Var,
+  };
+}
+
+/**
  * ProveSpend (Section 3.4.1)
  *
- * Creates a spend proof showing the client has a valid token with
- * at least s credits.
+ * Creates a spend proof showing the client has a valid token with at least s credits.
  *
  * @param params - System parameters
  * @param token - Credit token to spend from
  * @param s - Amount to spend (0 <= s <= c)
- * @returns Tuple of (proof, state) where state is used to receive change
+ * @param rng - Random number generator
+ * @returns Tuple of (proof, state)
  */
 export function proveSpend(
   params: SystemParams,
   token: CreditToken,
-  s: bigint
+  s: bigint,
+  rng: PRNG
 ): [SpendProof, SpendState] {
+  const { group, H1, H2, H3, H4, L } = params;
   const { A, e, k, r, c, ctx } = token;
-  const L = params.L;
   const maxValue = 1n << BigInt(L);
 
-  // Steps 1-7: Validate inputs
+  // Validate inputs
+  if (s < 0n) {
+    throw new ACTError(`Spend amount must be non-negative`, ACTErrorCode.InvalidAmount);
+  }
   if (s >= maxValue) {
     throw new ACTError(`Spend amount ${s} >= 2^L`, ACTErrorCode.InvalidAmount);
   }
@@ -69,17 +444,15 @@ export function proveSpend(
   }
 
   const G = group.generator();
-
-  // Steps 8-13: Randomize the signature
-  const r1 = group.randomScalar();
-  const r2 = group.randomScalar();
-
-  // B = G + H1 * c + H2 * k + H3 * r + H4 * ctx
+  const one = getOne(group);
   const cScalar = group.scalarFromBigint(c);
-  const B = group.msm(
-    [group.one(), cScalar, k, r, ctx],
-    [G, params.H1, params.H2, params.H3, params.H4]
-  );
+
+  // Randomize the signature with non-zero scalars
+  const r1 = randomNonZeroScalar(group, rng);
+  const r2 = randomNonZeroScalar(group, rng);
+
+  // B = G + c*H1 + k*H2 + r*H3 + ctx*H4
+  const B = group.msm([one, cScalar, k, r, ctx], [G, H1, H2, H3, H4]);
 
   // A' = A * (r1 * r2)
   const APrime = A.multiply(r1.mul(r2));
@@ -90,236 +463,138 @@ export function proveSpend(
   // r3 = 1/r1
   const r3 = r1.inv();
 
-  // Steps 14-22: Generate initial proof components for sigma protocol
-  const cPrime = group.randomScalar();
-  const rPrime = group.randomScalar();
-  const ePrime = group.randomScalar();
-  const r2Prime = group.randomScalar();
-  const r3Prime = group.randomScalar();
+  // A_bar = A' * e (what we're proving knowledge of)
+  // Actually for the proof: A_bar = e*(-A') + r2*BBar from verifier's perspective
+  // The prover knows e and r2 such that this holds
+  // Verifier computes: A_bar = A' * sk
+  // So prover needs: A'*sk = e*(-A') + r2*BBar
+  // => A'*(sk+e) = r2*BBar
+  // This requires knowing sk, which prover doesn't have!
+  //
+  // The actual relation is different. Let me re-read the spec...
+  //
+  // From spec: A_bar = A' * (e + sk) = A' * e + A' * sk
+  // Verifier computes A' * sk, so:
+  // A_bar - A'*sk = A' * e
+  // => We need: prover knows e such that A'*e = A_bar - A'*sk
+  //
+  // Wait, the verifier computes ABar = APrime * sk and checks the proof.
+  // The proof shows: ABar = e*(-APrime) + r2*BBar
+  // Which means: APrime*sk = -e*APrime + r2*BBar
+  // => APrime*(sk+e) = r2*BBar
+  // => APrime*(sk+e) = r2*B*r1
+  // => A*r1*r2*(sk+e) = r2*B*r1
+  // => A*(sk+e) = B
+  // This is the BBS signature verification equation! The token has A = B / (sk+e).
 
-  // A1 = A' * e' + B_bar * r2'
-  const A1 = APrime.multiply(ePrime).add(BBar.multiply(r2Prime));
+  // BBS signature: A * (sk + e) = B
+  // Randomized: A' = A * r1 * r2, B_bar = B * r1
+  // Equation to prove: A'*sk = -e*A' + r2*BBar
+  //
+  // Prover computes ABar = -e*A' + r2*BBar
+  // Let's verify this equals A'*sk:
+  //   -e*A' + r2*BBar = -e*A*r1*r2 + r2*B*r1
+  //                   = r1*r2*(-e*A) + r1*r2*B/r2 ... no
+  //   Actually: -e*A*r1*r2 + r2*B*r1 = r1*r2*(-e*A + B/r2)... wrong
+  //
+  //   Let's be more careful:
+  //   -e*A' + r2*BBar = -e*(A*r1*r2) + r2*(B*r1)
+  //                   = -e*A*r1*r2 + B*r1*r2
+  //                   = r1*r2*(-e*A + B)
+  //                   = r1*r2*(B - e*A)
+  //   From BBS: A*(sk+e) = B => B - e*A = A*sk
+  //   So: r1*r2*(B - e*A) = r1*r2*A*sk = A'*sk ✓
+  //
+  // So prover's ABar should equal verifier's ABar = A'*sk
+  const ABar = APrime.multiply(e).negate().add(BBar.multiply(r2));
 
-  // A2 = B_bar * r3' + H1 * c' + H3 * r'
-  const A2 = group.msm([r3Prime, cPrime, rPrime], [BBar, params.H1, params.H3]);
-
-  // Steps 23-25: Decompose c - s into bits (remaining balance m)
+  // Decompose remaining balance m = c - s into bits
   const m = c - s;
   const bits = bitDecompose(m, L);
 
-  // Steps 26-32: Create commitments for each bit
-  const kStar = group.randomScalar(); // New nullifier k*
-  const sBlinding: Scalar[] = []; // s[j] blinding factors for each bit
-  const Com: GroupElement[] = [];
+  // Generate new nullifier k* and blinding factors for each bit commitment
+  const kStar = randomNonZeroScalar(group, rng);
 
-  // Com[0] = H1 * i[0] + H2 * k* + H3 * s[0]
-  const s0 = group.randomScalar();
-  sBlinding.push(s0);
-  const i0Scalar = group.scalarFromBigint(bits[0]);
-  Com.push(group.msm([i0Scalar, kStar, s0], [params.H1, params.H2, params.H3]));
+  // Pre-size arrays to avoid reallocations
+  const sCom: Scalar[] = new Array<Scalar>(L);
+  const s2: Scalar[] = new Array<Scalar>(L);
+  const Com: GroupElement[] = new Array<GroupElement>(L);
 
-  // For j = 1 to L-1: Com[j] = H1 * i[j] + H3 * s[j]
-  for (let j = 1; j < L; j++) {
-    const sj = group.randomScalar();
-    sBlinding.push(sj);
-    const ijScalar = group.scalarFromBigint(bits[j]);
-    Com.push(group.msm([ijScalar, sj], [params.H1, params.H3]));
+  // Cache scalar 0 and 1 for bit conversion (bits are always 0n or 1n)
+  const zero = getZero(group);
+  const scalarBits: Scalar[] = new Array<Scalar>(L);
+  for (let j = 0; j < L; j++) {
+    scalarBits[j] = bits[j] === 1n ? one : zero;
   }
 
-  // Steps 33-66: Range proof using OR-proof for each bit
-  // For each bit position, we prove the commitment opens to either 0 or 1.
-  // We use the standard OR-proof technique: simulate one branch, prove the other.
-
-  // Arrays to store proof components
-  const gamma0Simulated: Scalar[] = []; // Simulated challenges
-  const CPrimeProver: [GroupElement, GroupElement][] = []; // First-round messages
-
-  // For bit 0: need H2*k* component in real branch
-  const k0Prime = group.randomScalar(); // Nonce for k* in bit 0
-  const sPrimeArr: Scalar[] = []; // Nonces for blinding factors
-  const w0 = group.randomScalar(); // For simulated branch of bit 0
-  const zSimArr: [Scalar, Scalar][] = []; // Simulated responses
-
   for (let j = 0; j < L; j++) {
-    const sPrimeJ = group.randomScalar();
-    sPrimeArr.push(sPrimeJ);
+    const sj = randomNonZeroScalar(group, rng);
+    sCom[j] = sj;
 
-    // Compute C[j][0] = Com[j] and C[j][1] = Com[j] - H1
-    const Cj0 = Com[j];
-    const Cj1 = Com[j].sub(params.H1);
+    const bj = scalarBits[j]!;
 
-    // Random challenge and responses for simulated branch
-    const gamma0J = group.randomScalar();
-    gamma0Simulated.push(gamma0J);
-
-    const z0Sim = group.randomScalar();
-    const z1Sim = group.randomScalar();
-    zSimArr.push([z0Sim, z1Sim]);
-
+    // Com[j] = b[j]*H1 + s[j]*H3 (+ kstar*H2 for j=0)
     if (j === 0) {
-      // Bit 0 has k* component
-      if (bits[0] === 0n) {
-        // Real branch is b=0: C'[0][0] = H2 * k0' + H3 * s'[0]
-        // Simulated branch is b=1: C'[0][1] = H2 * w0 + H3 * z_sim[0][1] - C[0][1] * gamma0[0]
-        const CPrime00 = group.msm([k0Prime, sPrimeJ], [params.H2, params.H3]);
-        const CPrime01 = group.msm([w0, z1Sim], [params.H2, params.H3]).sub(Cj1.multiply(gamma0J));
-        CPrimeProver.push([CPrime00, CPrime01]);
-      } else {
-        // Real branch is b=1: C'[0][1] = H2 * k0' + H3 * s'[0]
-        // Simulated branch is b=0: C'[0][0] = H2 * w0 + H3 * z_sim[0][0] - C[0][0] * gamma0[0]
-        const CPrime00 = group.msm([w0, z0Sim], [params.H2, params.H3]).sub(Cj0.multiply(gamma0J));
-        const CPrime01 = group.msm([k0Prime, sPrimeJ], [params.H2, params.H3]);
-        CPrimeProver.push([CPrime00, CPrime01]);
-      }
+      Com[j] = group.msm([bj, kStar, sj], [H1, H2, H3]);
     } else {
-      // Bits 1 to L-1: no k* component
-      if (bits[j] === 0n) {
-        // Real branch is b=0: C'[j][0] = H3 * s'[j]
-        // Simulated branch is b=1: C'[j][1] = H3 * z_sim[j][1] - C[j][1] * gamma0[j]
-        const CPrimeJ0 = params.H3.multiply(sPrimeJ);
-        const CPrimeJ1 = params.H3.multiply(z1Sim).sub(Cj1.multiply(gamma0J));
-        CPrimeProver.push([CPrimeJ0, CPrimeJ1]);
-      } else {
-        // Real branch is b=1: C'[j][1] = H3 * s'[j]
-        // Simulated branch is b=0: C'[j][0] = H3 * z_sim[j][0] - C[j][0] * gamma0[j]
-        const CPrimeJ0 = params.H3.multiply(z0Sim).sub(Cj0.multiply(gamma0J));
-        const CPrimeJ1 = params.H3.multiply(sPrimeJ);
-        CPrimeProver.push([CPrimeJ0, CPrimeJ1]);
-      }
+      Com[j] = group.msm([bj, sj], [H1, H3]);
     }
+
+    // s2[j] = (1 - b[j]) * s[j]
+    const oneMinusBj = one.sub(bj);
+    s2[j] = oneMinusBj.mul(sj);
   }
 
-  // Steps 67-72: Compute K' and final commitment
-  // K' = Sum(Com[j] * 2^j for j in [L])
-  // r* = Sum(s[j] * 2^j for j in [L])
-  let KPrime = group.identity();
-  let rStar = group.zero();
-  for (let j = 0; j < L; j++) {
-    const pow2j = group.scalarFromBigint(1n << BigInt(j));
-    KPrime = KPrime.add(Com[j].multiply(pow2j));
-    rStar = rStar.add(sBlinding[j].mul(pow2j));
-  }
+  // Compute r* = sum(2^j * s[j]) using Horner's method
+  const rStar = pow2WeightedScalarSum(sCom);
 
-  const kPrime2 = group.randomScalar(); // Nonce for k_bar response
-  const sPrime2 = group.randomScalar(); // Nonce for s_bar response
+  // Compute kStar2 = (1 - b[0]) * kStar
+  // This is needed for the binary constraint on Com[0]
+  const b0Scalar = scalarBits[0]!;
+  const oneMinusB0 = one.sub(b0Scalar);
+  const kStar2 = oneMinusB0.mul(kStar);
 
-  // C_final = H1 * (-c') + H2 * k' + H3 * s'
-  const CFinal = group.msm([cPrime.neg(), kPrime2, sPrime2], [params.H1, params.H2, params.H3]);
+  // Build relation
+  const { relation, scalarVarCount } = buildSpendRelation(
+    params,
+    APrime,
+    BBar,
+    ABar,
+    Com,
+    k,
+    ctx,
+    s
+  );
 
-  // Steps 73-86: Generate challenge using transcript
-  const transcript = new Transcript('spend', params);
-  transcript.addScalar(k);
-  transcript.addScalar(ctx);
-  transcript.addElement(APrime);
-  transcript.addElement(BBar);
-  transcript.addElement(A1);
-  transcript.addElement(A2);
-  for (let j = 0; j < L; j++) {
-    transcript.addElement(Com[j]);
-  }
-  for (let j = 0; j < L; j++) {
-    transcript.addElement(CPrimeProver[j][0]);
-    transcript.addElement(CPrimeProver[j][1]);
-  }
-  transcript.addElement(CFinal);
-  const gamma = transcript.getChallenge();
+  // Build witness
+  // Order must match variable allocation: e, r2, r3, c, r, b[0..L-1], sCom[0..L-1], s2[0..L-1], kStar, kStar2
+  const witness: Scalar[] = [
+    e,
+    r2,
+    r3,
+    cScalar,
+    r,
+    ...bits.map((b) => group.scalarFromBigint(b)),
+    ...sCom,
+    ...s2,
+    kStar,
+    kStar2,
+  ];
 
-  // Steps 88-93: Compute sigma protocol responses
-  const eBar = ePrime.sub(gamma.mul(e));
-  const r2Bar = gamma.mul(r2).add(r2Prime);
-  const r3Bar = gamma.mul(r3).add(r3Prime);
-  const cBar = cPrime.sub(gamma.mul(cScalar));
-  const rBar = rPrime.sub(gamma.mul(r));
+  // Generate NI proof (NISigmaProtocol uses internal randomness)
+  const sessionId = spendSessionId(params, k, ctx);
+  const prover = new NISigmaProtocol(relation, { sessionId });
+  const proof = prover.prove(witness);
+  const pok = serializeProof(proof, group.scalarSize);
 
-  // Steps 94-120: Complete range proof responses
-  // For each bit, compute final responses based on which branch was real
-  const zFinal: [Scalar, Scalar][] = [];
-  const gamma0Final: Scalar[] = [];
-  let w00Final: Scalar;
-  let w01Final: Scalar;
-
-  for (let j = 0; j < L; j++) {
-    if (j === 0) {
-      // Bit 0 with k* component
-      if (bits[0] === 0n) {
-        // Real branch was b=0
-        // gamma0_final[0] = gamma - gamma0_simulated[0]
-        const gamma0F = gamma.sub(gamma0Simulated[0]);
-        gamma0Final.push(gamma0F);
-        // w00 = gamma0F * k* + k0'
-        w00Final = gamma0F.mul(kStar).add(k0Prime);
-        // w01 = w0 (from simulation)
-        w01Final = w0;
-        // z[0][0] = gamma0F * s[0] + s'[0]
-        const z00 = gamma0F.mul(sBlinding[0]).add(sPrimeArr[0]);
-        // z[0][1] = z_sim[0][1] (from simulation)
-        const z01 = zSimArr[0][1];
-        zFinal.push([z00, z01]);
-      } else {
-        // Real branch was b=1
-        // gamma0_final[0] = gamma0_simulated[0]
-        gamma0Final.push(gamma0Simulated[0]);
-        const gamma1F = gamma.sub(gamma0Simulated[0]);
-        // w00 = w0 (from simulation)
-        w00Final = w0;
-        // w01 = gamma1F * k* + k0'
-        w01Final = gamma1F.mul(kStar).add(k0Prime);
-        // z[0][0] = z_sim[0][0] (from simulation)
-        const z00 = zSimArr[0][0];
-        // z[0][1] = gamma1F * s[0] + s'[0]
-        const z01 = gamma1F.mul(sBlinding[0]).add(sPrimeArr[0]);
-        zFinal.push([z00, z01]);
-      }
-    } else {
-      // Bits 1 to L-1
-      if (bits[j] === 0n) {
-        // Real branch was b=0
-        const gamma0F = gamma.sub(gamma0Simulated[j]);
-        gamma0Final.push(gamma0F);
-        // z[j][0] = gamma0F * s[j] + s'[j]
-        const zj0 = gamma0F.mul(sBlinding[j]).add(sPrimeArr[j]);
-        // z[j][1] = z_sim[j][1]
-        const zj1 = zSimArr[j][1];
-        zFinal.push([zj0, zj1]);
-      } else {
-        // Real branch was b=1
-        gamma0Final.push(gamma0Simulated[j]);
-        const gamma1F = gamma.sub(gamma0Simulated[j]);
-        // z[j][0] = z_sim[j][0]
-        const zj0 = zSimArr[j][0];
-        // z[j][1] = gamma1F * s[j] + s'[j]
-        const zj1 = gamma1F.mul(sBlinding[j]).add(sPrimeArr[j]);
-        zFinal.push([zj0, zj1]);
-      }
-    }
-  }
-
-  // Steps 121-122: Final responses for K' opening
-  // k_bar = gamma * k* + k' (proves knowledge of k* in K')
-  const kBarFinal = gamma.mul(kStar).add(kPrime2);
-  // s_bar = gamma * r* + s' (proves knowledge of r* in K')
-  const sBarFinal = gamma.mul(rStar).add(sPrime2);
-
-  // Construct proof
-  const proof: SpendProof = {
+  const spendProof: SpendProof = {
     k,
     s,
     ctx,
     APrime,
     BBar,
     Com,
-    gamma,
-    eBar,
-    r2Bar,
-    r3Bar,
-    cBar,
-    rBar,
-    w00: w00Final!,
-    w01: w01Final!,
-    gamma0: gamma0Final,
-    z: zFinal,
-    kBarFinal,
-    sBarFinal,
+    pok,
   };
 
   const state: SpendState = {
@@ -329,133 +604,98 @@ export function proveSpend(
     ctx,
   };
 
-  return [proof, state];
+  return [spendProof, state];
 }
 
 /**
- * VerifySpendProof (Section 3.4.5)
+ * VerifySpendProof (Section 3.4.2)
  *
  * Verifies a spend proof.
  *
  * @param params - System parameters
  * @param sk - Issuer's private key
  * @param proof - Spend proof from client
- * @returns true if valid
+ * @throws ACTError if proof is invalid
  */
-export function verifySpendProof(params: SystemParams, sk: PrivateKey, proof: SpendProof): boolean {
-  const {
-    k,
-    s,
-    ctx,
-    APrime,
-    BBar,
-    Com,
-    gamma,
-    eBar,
-    r2Bar,
-    r3Bar,
-    cBar,
-    rBar,
-    w00,
-    w01,
-    gamma0,
-    z,
-    kBarFinal,
-    sBarFinal,
-  } = proof;
+export function verifySpendProof(params: SystemParams, sk: PrivateKey, proof: SpendProof): void {
+  const { group, L } = params;
+  const { k, s, ctx, APrime, BBar, Com, pok } = proof;
 
-  const L = params.L;
-  const G = group.generator();
+  // Validate spend amount is in range [0, 2^L)
+  const maxValue = 1n << BigInt(L);
+  if (s < 0n || s >= maxValue) {
+    throw new ACTError(`Spend amount out of range [0, 2^${L})`, ACTErrorCode.InvalidSpendProof);
+  }
 
-  // Step 3-4: Check A' is not identity
-  if (APrime.isIdentity()) {
+  // Check A' is not identity
+  if (APrime.equals(group.identity())) {
     throw new ACTError("A' is identity", ACTErrorCode.IdentityPoint);
   }
 
-  // Steps 5-7: Compute issuer's view
-  // A_bar = A' * sk.x
+  // Check B_bar is not identity
+  if (BBar.equals(group.identity())) {
+    throw new ACTError('B_bar is identity', ACTErrorCode.IdentityPoint);
+  }
+
+  // Validate proof structure
+  if (Com.length !== L) {
+    throw new ACTError(
+      `Invalid commitment count: expected ${L}, got ${Com.length}`,
+      ACTErrorCode.InvalidSpendProof
+    );
+  }
+
+  // Compute A_bar = A' * sk.x (issuer's view)
   const ABar = APrime.multiply(sk.x);
 
-  // H1_prime = G + H2 * k + H4 * ctx
-  const H1Prime = group.msm([group.one(), k, ctx], [G, params.H2, params.H4]);
+  // Build relation (same as prover)
+  const { relation, scalarVarCount } = buildSpendRelation(
+    params,
+    APrime,
+    BBar,
+    ABar,
+    Com,
+    k,
+    ctx,
+    s
+  );
 
-  // Steps 8-10: Verify sigma protocol
-  // A1 = A' * e_bar + B_bar * r2_bar - A_bar * gamma
-  const A1 = APrime.multiply(eBar).add(BBar.multiply(r2Bar)).sub(ABar.multiply(gamma));
+  // Verify proof
+  const sessionId = spendSessionId(params, k, ctx);
+  const verifier = new NISigmaProtocol(relation, { sessionId });
 
-  // A2 = B_bar * r3_bar + H1 * c_bar + H3 * r_bar - H1_prime * gamma
-  const A2 = group
-    .msm([r3Bar, cBar, rBar], [BBar, params.H1, params.H3])
-    .sub(H1Prime.multiply(gamma));
+  const parsedProof = deserializeProof(group, pok, scalarVarCount);
 
-  // Steps 11-27: Range proof verification
-  const CPrime: [GroupElement, GroupElement][] = [];
-
-  for (let j = 0; j < L; j++) {
-    const gamma1J = gamma.sub(gamma0[j]);
-    const Cj0 = Com[j];
-    const Cj1 = Com[j].sub(params.H1);
-
-    if (j === 0) {
-      // Steps 19-20: Bit 0 with k* component
-      // C'[0][0] = H2 * w00 + H3 * z[0][0] - C[0][0] * gamma0[0]
-      const CPrime00 = group
-        .msm([w00, z[0][0]], [params.H2, params.H3])
-        .sub(Cj0.multiply(gamma0[0]));
-      // C'[0][1] = H2 * w01 + H3 * z[0][1] - C[0][1] * gamma1[0]
-      const CPrime01 = group.msm([w01, z[0][1]], [params.H2, params.H3]).sub(Cj1.multiply(gamma1J));
-      CPrime.push([CPrime00, CPrime01]);
-    } else {
-      // Steps 22-27: Remaining bits
-      // C'[j][0] = H3 * z[j][0] - C[j][0] * gamma0[j]
-      const CPrimeJ0 = params.H3.multiply(z[j][0]).sub(Cj0.multiply(gamma0[j]));
-      // C'[j][1] = H3 * z[j][1] - C[j][1] * gamma1[j]
-      const CPrimeJ1 = params.H3.multiply(z[j][1]).sub(Cj1.multiply(gamma1J));
-      CPrime.push([CPrimeJ0, CPrimeJ1]);
-    }
-  }
-
-  // Steps 28-31: Verify final commitment
-  // K' = Sum(Com[j] * 2^j for j in [L])
-  let KPrime = group.identity();
-  for (let j = 0; j < L; j++) {
-    const pow2j = group.scalarFromBigint(1n << BigInt(j));
-    KPrime = KPrime.add(Com[j].multiply(pow2j));
-  }
-
-  // Com_total = H1 * s + K'
-  const sScalar = group.scalarFromBigint(s);
-  const ComTotal = params.H1.multiply(sScalar).add(KPrime);
-
-  // C_final = H1 * (-c_bar) + H2 * k_bar + H3 * s_bar - Com_total * gamma
-  const CFinal = group
-    .msm([cBar.neg(), kBarFinal, sBarFinal], [params.H1, params.H2, params.H3])
-    .sub(ComTotal.multiply(gamma));
-
-  // Steps 32-46: Recompute challenge
-  const transcript = new Transcript('spend', params);
-  transcript.addScalar(k);
-  transcript.addScalar(ctx);
-  transcript.addElement(APrime);
-  transcript.addElement(BBar);
-  transcript.addElement(A1);
-  transcript.addElement(A2);
-  for (let j = 0; j < L; j++) {
-    transcript.addElement(Com[j]);
-  }
-  for (let j = 0; j < L; j++) {
-    transcript.addElement(CPrime[j][0]);
-    transcript.addElement(CPrime[j][1]);
-  }
-  transcript.addElement(CFinal);
-  const gammaCheck = transcript.getChallenge();
-
-  // Steps 47-49: Verify challenge
-  if (!gamma.equals(gammaCheck)) {
+  if (!verifier.verify(parsedProof)) {
     throw new ACTError('Invalid spend proof', ACTErrorCode.InvalidSpendProof);
   }
+}
 
-  return true;
+/**
+ * Get the instance label for a spend proof (for debugging/interop testing).
+ *
+ * This returns the canonical instance label that is absorbed into the
+ * Fiat-Shamir sponge during proof generation and verification.
+ *
+ * @param params - System parameters
+ * @param sk - Issuer's private key
+ * @param proof - Spend proof from client
+ * @returns The instance label as bytes
+ */
+export function getSpendInstanceLabel(
+  params: SystemParams,
+  sk: PrivateKey,
+  proof: SpendProof
+): Uint8Array {
+  const { k, s, ctx, APrime, BBar, Com } = proof;
+
+  // Compute A_bar = A' * sk.x (issuer's view)
+  const ABar = APrime.multiply(sk.x);
+
+  // Build relation (same as prover)
+  const { relation } = buildSpendRelation(params, APrime, BBar, ABar, Com, k, ctx, s);
+
+  return relation.getInstanceLabel();
 }
 
 /**
@@ -467,77 +707,74 @@ export function verifySpendProof(params: SystemParams, sk: PrivateKey, proof: Sp
  * @param sk - Issuer's private key
  * @param proof - Verified spend proof
  * @param t - Credits to return (0 <= t <= s)
+ * @param rng - Random number generator
  * @returns Refund message
  */
 export function issueRefund(
   params: SystemParams,
   sk: PrivateKey,
   proof: SpendProof,
-  t: bigint
+  t: bigint,
+  rng: PRNG
 ): Refund {
+  const { group, H1, H4, L } = params;
   const { s, ctx, Com } = proof;
-  const L = params.L;
   const maxValue = 1n << BigInt(L);
 
   // Validate partial return amount
+  if (t < 0n) {
+    throw new ACTError('Return amount must be non-negative', ACTErrorCode.InvalidAmount);
+  }
   if (t >= maxValue) {
     throw new ACTError(`Return amount ${t} >= 2^L`, ACTErrorCode.InvalidAmount);
   }
   if (t > s) {
-    throw new ACTError(`Return amount ${t} > spend amount ${s}`, ACTErrorCode.InvalidAmount);
+    throw new ACTError(`Return amount ${t} > spend amount ${s}`, ACTErrorCode.InvalidRefundAmount);
   }
 
-  // Reconstruct K' = Sum(Com[j] * 2^j for j in [L])
-  let KPrime = group.identity();
-  for (let j = 0; j < L; j++) {
-    const pow2j = group.scalarFromBigint(1n << BigInt(j));
-    KPrime = KPrime.add(Com[j].multiply(pow2j));
-  }
+  // Reconstruct K' = sum(2^j * Com[j]) using Horner's method
+  const KPrime = pow2WeightedSum(Com);
 
   const G = group.generator();
-  const pk_W = G.multiply(sk.x);
+  const one = getOne(group);
 
-  // Steps 6-9: Create new BBS signature
-  const eStar = group.randomScalar();
+  // Create new BBS signature
+  const eStar = randomNonZeroScalar(group, rng);
   const tScalar = group.scalarFromBigint(t);
 
-  // X_A* = G + K' + H1 * t + H4 * ctx
-  const XAStar = group.msm(
-    [group.one(), group.one(), tScalar, ctx],
-    [G, KPrime, params.H1, params.H4]
-  );
+  // X_A* = G + K' + t*H1 + ctx*H4
+  const XAStar = group.msm([one, one, tScalar, ctx], [G, KPrime, H1, H4]);
 
   // A* = X_A* * (1/(e* + sk.x))
-  const AStar = XAStar.multiply(eStar.add(sk.x).inv());
+  const skPlusEStar = sk.x.add(eStar);
+  const AStar = XAStar.multiply(skPlusEStar.inv());
 
-  // Steps 10-14: Generate proof
-  const alpha = group.randomScalar();
-  const Y_A = AStar.multiply(alpha);
-  const Y_G = G.multiply(alpha);
-  const X_G = G.multiply(eStar).add(pk_W);
+  // X_G = (e* + sk.x) * G
+  const X_G = G.multiply(skPlusEStar);
 
-  // Steps 15-25: Fiat-Shamir
-  const transcript = new Transcript('refund', params);
-  transcript.addScalar(eStar);
-  transcript.addCredit(t);
-  transcript.addScalar(ctx);
-  transcript.addElement(AStar);
-  transcript.addElement(XAStar);
-  transcript.addElement(X_G);
-  transcript.addElement(Y_A);
-  transcript.addElement(Y_G);
-  const gammaRefund = transcript.getChallenge();
+  // Build DLEQ proof
+  const relation = new LinearRelation(group);
+  const refundScalars = relation.allocateScalars(1);
+  const dVar = refundScalars[0]!;
+  const refundElems = relation.allocateElements(4);
+  const gIdx = refundElems[0]!;
+  const aStarIdx = refundElems[1]!;
+  const xaStarIdx = refundElems[2]!;
+  const xgIdx = refundElems[3]!;
+  relation.setElements([
+    [gIdx, G],
+    [aStarIdx, AStar],
+    [xaStarIdx, XAStar],
+    [xgIdx, X_G],
+  ]);
+  appendDleq(relation, aStarIdx, gIdx, xaStarIdx, xgIdx, dVar);
 
-  // Step 27: z = gamma * (sk + e*) + alpha
-  const zRefund = gammaRefund.mul(sk.x.add(eStar)).add(alpha);
+  const sessionId = refundSessionId(params, eStar, t, ctx);
+  const prover = new NISigmaProtocol(relation, { sessionId });
+  const refundProof = prover.prove([skPlusEStar]);
+  const pok = serializeProof(refundProof, group.scalarSize);
 
-  return {
-    AStar,
-    eStar,
-    gamma: gammaRefund,
-    z: zRefund,
-    t,
-  };
+  return { AStar, eStar, t, pok };
 }
 
 /**
@@ -559,55 +796,50 @@ export function constructRefundToken(
   refund: Refund,
   state: SpendState
 ): CreditToken {
-  const { AStar, eStar, gamma, z, t } = refund;
+  const { group, H1, H4, L } = params;
+  const { AStar, eStar, t, pok } = refund;
   const { kStar, rStar, m, ctx } = state;
   const { Com } = proof;
-  const L = params.L;
 
-  // Reconstruct K' = Sum(Com[j] * 2^j for j in [L])
-  let KPrime = group.identity();
-  for (let j = 0; j < L; j++) {
-    const pow2j = group.scalarFromBigint(1n << BigInt(j));
-    KPrime = KPrime.add(Com[j].multiply(pow2j));
-  }
+  // Reconstruct K' = sum(2^j * Com[j]) using Horner's method
+  const KPrime = pow2WeightedSum(Com);
 
   const G = group.generator();
+  const one = getOne(group);
   const tScalar = group.scalarFromBigint(t);
 
-  // Steps 5-6: Reconstruct X_A* and X_G
-  // X_A* = G + K' + H1 * t + H4 * ctx
-  const XAStar = group.msm(
-    [group.one(), group.one(), tScalar, ctx],
-    [G, KPrime, params.H1, params.H4]
-  );
+  // X_A* = G + K' + t*H1 + ctx*H4
+  const XAStar = group.msm([one, one, tScalar, ctx], [G, KPrime, H1, H4]);
 
-  // X_G = G * e* + pk.W
+  // X_G = e* * G + pk.W
   const X_G = G.multiply(eStar).add(pk.W);
 
-  // Steps 7-9: Verify proof
-  // Y_A = A* * z + X_A* * (-gamma)
-  const Y_A = AStar.multiply(z).sub(XAStar.multiply(gamma));
+  // Verify DLEQ proof
+  const relation = new LinearRelation(group);
+  const verifyScalars = relation.allocateScalars(1);
+  const dVar = verifyScalars[0]!;
+  const verifyElems = relation.allocateElements(4);
+  const gIdx = verifyElems[0]!;
+  const aStarIdx = verifyElems[1]!;
+  const xaStarIdx = verifyElems[2]!;
+  const xgIdx = verifyElems[3]!;
+  relation.setElements([
+    [gIdx, G],
+    [aStarIdx, AStar],
+    [xaStarIdx, XAStar],
+    [xgIdx, X_G],
+  ]);
+  appendDleq(relation, aStarIdx, gIdx, xaStarIdx, xgIdx, dVar);
 
-  // Y_G = G * z + X_G * (-gamma)
-  const Y_G = G.multiply(z).sub(X_G.multiply(gamma));
+  const sessionId = refundSessionId(params, eStar, t, ctx);
+  const verifier = new NISigmaProtocol(relation, { sessionId });
+  const parsedProof = deserializeProof(group, pok, 1);
 
-  // Steps 10-20: Recompute challenge
-  const transcript = new Transcript('refund', params);
-  transcript.addScalar(eStar);
-  transcript.addCredit(t);
-  transcript.addScalar(ctx);
-  transcript.addElement(AStar);
-  transcript.addElement(XAStar);
-  transcript.addElement(X_G);
-  transcript.addElement(Y_A);
-  transcript.addElement(Y_G);
-  const gammaCheck = transcript.getChallenge();
-
-  if (!gamma.equals(gammaCheck)) {
+  if (!verifier.verify(parsedProof)) {
     throw new ACTError('Invalid refund proof', ACTErrorCode.InvalidRefundProof);
   }
 
-  // Step 22-23: Construct new token with balance m + t
+  // Construct new token with balance m + t
   const newBalance = m + t;
 
   return {
@@ -621,13 +853,14 @@ export function constructRefundToken(
 }
 
 /**
- * Verify spend and issue refund (issuer-side convenience)
+ * Verify spend and issue refund (issuer-side convenience).
  *
  * @param params - System parameters
  * @param sk - Issuer's private key
  * @param proof - Client's spend proof
  * @param usedNullifiers - Set of already-used nullifiers (modified in place)
  * @param t - Credits to return (default 0)
+ * @param rng - Random number generator
  * @returns Refund message
  */
 export function verifyAndRefund(
@@ -635,7 +868,8 @@ export function verifyAndRefund(
   sk: PrivateKey,
   proof: SpendProof,
   usedNullifiers: Set<string>,
-  t: bigint = 0n
+  t: bigint,
+  rng: PRNG
 ): Refund {
   // Check nullifier hasn't been used
   const nullifierKey = toHex(proof.k.toBytes());
@@ -650,5 +884,5 @@ export function verifyAndRefund(
   usedNullifiers.add(nullifierKey);
 
   // Issue refund
-  return issueRefund(params, sk, proof, t);
+  return issueRefund(params, sk, proof, t, rng);
 }

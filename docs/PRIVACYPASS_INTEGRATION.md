@@ -14,7 +14,7 @@ Plan for adding ACT token type (0xE5AD) to privacypass-ts.
 
 ## Summary
 
-Add ACT token type per draft-schlesinger-privacypass-act-01. Uses `act-ts/vnext` (TLS wire format, NISigmaProtocol proofs). No CBOR dependency.
+Add ACT token type per draft-schlesinger-privacypass-act-01. Uses `act-ts` (TLS wire format, NISigmaProtocol proofs). No CBOR dependency.
 
 ---
 
@@ -132,22 +132,22 @@ interface ACTChallengeParams {
   cost: bigint;
 }
 
-// Wire formats (using act-ts/vnext TLS encoding)
+// Wire formats (using act-ts TLS encoding)
 class ACTTokenRequest {
   tokenType: 0xe5ad;
   truncatedKeyId: number; // 1 byte (LSB of issuer_key_id)
-  encodedRequest: Uint8Array; // encodeIssuanceRequest() from act-ts/vnext
+  encodedRequest: Uint8Array; // encodeIssuanceRequest() from act-ts
 }
 
 class ACTTokenResponse {
-  encodedResponse: Uint8Array; // encodeIssuanceResponse() from act-ts/vnext
+  encodedResponse: Uint8Array; // encodeIssuanceResponse() from act-ts
 }
 
 class ACTToken {
   tokenType: 0xe5ad;
   challengeDigest: Uint8Array; // SHA-256(TokenChallenge), 32 bytes
   issuerKeyId: Uint8Array; // 32 bytes
-  spendProof: Uint8Array; // encodeSpendProof() from act-ts/vnext
+  spendProof: Uint8Array; // encodeSpendProof() from act-ts
 }
 
 // Credential info returned from finalizeCredential
@@ -212,7 +212,7 @@ PRIVATE_CREDENTIAL_RESPONSE = 'application/private-credential-response';
 | Interface         | Implements `PrivacyPassClient`, `finalize()` throws, use `finalizeCredential()` |
 | State persistence | Export/import pattern, user handles storage                                     |
 | Reverse flow      | `PrivacyPass-Reverse` header with `GenericBatchTokenResponse` framing           |
-| Wire format       | TLS presentation language via act-ts/vnext (no CBOR)                            |
+| Wire format       | TLS presentation language via act-ts (no CBOR)                                  |
 | Dependency        | Submodule + workspace dependency                                                |
 
 ---
@@ -277,9 +277,9 @@ Panel review identified these priorities:
 
 ---
 
-## act-ts/vnext API Surface
+## act-ts API Surface
 
-Key exports from `act-ts/vnext`:
+Key exports from `act-ts`:
 
 ```typescript
 // Types

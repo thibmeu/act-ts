@@ -1,26 +1,29 @@
 /**
- * ACT System Parameters Generation
+ * ACT System Parameters Generation - VNEXT (sigma-draft-compliance)
  *
- * Section 3.1: System Parameters
+ * Section 3.1: SetGenerators
  *
- * Generates H1, H2, H3, H4 deterministically from a domain separator
- * using BLAKE3 and OneWayMap (RFC 9496 Section 4.3.4).
+ * Generates H1, H2, H3, H4 using hash-to-group with counter for collision avoidance.
+ * Uses SHAKE128 per the new draft (replacing BLAKE3).
  */
 
-import { blake3 } from '@noble/hashes/blake3';
-import { numberToBytesLE } from '@noble/curves/utils.js';
+import { shake128 } from '@noble/hashes/sha3';
+import type { Group } from 'sigma-proofs';
 import type { SystemParams, GroupElement } from './types.js';
 import { ACTError, ACTErrorCode } from './types.js';
-import { group } from './group.js';
+import { toHex } from './rng.js';
 
 /**
- * Length-prefix data with 8-byte big-endian length
+ * Concatenate Uint8Arrays
  */
-function lengthPrefixed(data: Uint8Array): Uint8Array {
-  const result = new Uint8Array(8 + data.length);
-  const view = new DataView(result.buffer);
-  view.setBigUint64(0, BigInt(data.length), false);
-  result.set(data, 8);
+function concat(...arrays: Uint8Array[]): Uint8Array {
+  const totalLen = arrays.reduce((sum, arr) => sum + arr.length, 0);
+  const result = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
   return result;
 }
 
@@ -36,102 +39,122 @@ function asciiToBytes(str: string): Uint8Array {
 }
 
 /**
- * HashToRistretto255 (Section 3.1)
- *
- * Input:
- *   - seed: 32-byte seed value
- *   - counter: Integer counter for domain separation
- * Output:
- *   - P: A valid Ristretto255 point
- *
- * Uses BLAKE3 XOF to generate 64 uniform bytes, then OneWayMap.
+ * Encode counter as single byte (u8)
+ * Matches Rust implementation which uses [counter] as a single byte array
  */
-function hashToRistretto255(seed: Uint8Array, counter: number): GroupElement {
-  // Spec says:
-  // 1. hasher = BLAKE3.new()
-  // 2. hasher.update(LengthPrefixed(domain_separator)) -- but domain_separator not passed here
-  // 3. hasher.update(LengthPrefixed(seed))
-  // 4. hasher.update(LengthPrefixed(counter.to_le_bytes(4)))
-  // 5. uniform_bytes = hasher.finalize_xof(64)
-  // 6. P = OneWayMap(uniform_bytes)
+function u8(value: number): Uint8Array {
+  if (value < 0 || value > 255) {
+    throw new ACTError(`Counter value out of range: ${value}`, ACTErrorCode.InvalidParameter);
+  }
+  return new Uint8Array([value]);
+}
 
-  // Note: Looking at the spec more carefully, the domain_separator is already
-  // hashed into the seed in GenerateParameters step 1. So here we just use
-  // seed and counter.
+/**
+ * SetGenerators (Section 3.1 of new draft)
+ *
+ * Generates H1, H2, H3, H4 deterministically from domain_separator.
+ * Uses hash-to-group with distinct prefixes and collision-avoidance counter.
+ *
+ * Algorithm:
+ * ```
+ * ctr = 0
+ * repeat:
+ *   H1 = G.HashToGroup("GenH1" || ctr || domain_separator)
+ *   H2 = G.HashToGroup("GenH2" || ctr || domain_separator)
+ *   H3 = G.HashToGroup("GenH3" || ctr || domain_separator)
+ *   H4 = G.HashToGroup("GenH4" || ctr || domain_separator)
+ *   ctr++
+ * until len({G0, H1, H2, H3, H4}) == 5  // all distinct
+ * ```
+ *
+ * @param group - The elliptic curve group
+ * @param domainSeparator - Unique deployment identifier (bytes)
+ * @returns Tuple [H1, H2, H3, H4]
+ */
+export function setGenerators(
+  group: Group,
+  domainSeparator: Uint8Array
+): [GroupElement, GroupElement, GroupElement, GroupElement] {
+  const G0 = group.generator();
+  const maxIterations = 256; // Prevent infinite loop (collision extremely unlikely)
 
-  const counterBytes = numberToBytesLE(counter, 4);
+  for (let ctr = 0; ctr < maxIterations; ctr++) {
+    const ctrBytes = u8(ctr);
 
-  // Build hash input
-  const parts: Uint8Array[] = [lengthPrefixed(seed), lengthPrefixed(counterBytes)];
+    // DST for hash-to-group per ACT(ristretto255, SHAKE128) suite
+    // Must match Rust: format!("HashToGroup-{}", domain_separator)
+    const dst = concat(asciiToBytes('HashToGroup-'), domainSeparator);
 
-  const totalLen = parts.reduce((sum, arr) => sum + arr.length, 0);
-  const combined = new Uint8Array(totalLen);
-  let offset = 0;
-  for (const arr of parts) {
-    combined.set(arr, offset);
-    offset += arr.length;
+    // Generate candidates - msg format: "GenHN" || counter || domain_separator
+    // Uses hash_to_ristretto255(msg, dst) internally
+    const H1 = group.hashToElement(concat(asciiToBytes('GenH1'), ctrBytes, domainSeparator), dst);
+    const H2 = group.hashToElement(concat(asciiToBytes('GenH2'), ctrBytes, domainSeparator), dst);
+    const H3 = group.hashToElement(concat(asciiToBytes('GenH3'), ctrBytes, domainSeparator), dst);
+    const H4 = group.hashToElement(concat(asciiToBytes('GenH4'), ctrBytes, domainSeparator), dst);
+
+    // Check all 5 are distinct (set accumulator approach per armfazh suggestion)
+    const elements = [G0, H1, H2, H3, H4];
+    const serialized = new Set(elements.map((e) => toHex(e.toBytes())));
+
+    if (serialized.size === 5) {
+      return [H1, H2, H3, H4];
+    }
   }
 
-  // BLAKE3 XOF with 64-byte output
-  const uniformBytes = blake3(combined, { dkLen: 64 });
-
-  // OneWayMap (RFC 9496 Section 4.3.4)
-  return group.hashToElement(uniformBytes);
+  throw new ACTError(
+    'Failed to generate distinct generators (collision detected)',
+    ACTErrorCode.InvalidParameter
+  );
 }
 
 /**
  * GenerateParameters (Section 3.1)
  *
- * Generates system parameters H1-H4 from a domain separator.
+ * Generates complete system parameters from a domain separator.
  *
- * The domain_separator MUST be unique for each deployment.
- * Recommended format: "ACT-v1:organization:service:deployment_id:version"
- *
- * @param domainSeparator - Unique identifier for this deployment
+ * @param group - The elliptic curve group (ristretto255)
+ * @param domainSeparator - Unique identifier (string or bytes)
  * @param L - Bit length for credit values (1 <= L <= 128)
  * @returns System parameters
  */
-export function generateParameters(domainSeparator: string, L: number = 64): SystemParams {
-  // Validate L constraint (Section 3.1)
+export function generateParameters(
+  group: Group,
+  domainSeparator: string | Uint8Array,
+  L: number = 64
+): SystemParams {
+  // Validate L constraint
   if (L < 1 || L > 128) {
     throw new ACTError(`L must be in range [1, 128], got ${L}`, ACTErrorCode.InvalidParameter);
   }
 
-  // Step 1: seed = BLAKE3(LengthPrefixed(domain_separator))
-  const domainBytes = asciiToBytes(domainSeparator);
-  const seed = blake3(lengthPrefixed(domainBytes));
+  const domainBytes =
+    typeof domainSeparator === 'string' ? asciiToBytes(domainSeparator) : domainSeparator;
 
-  // Steps 3-6: Generate H1, H2, H3, H4
-  let counter = 0;
-  const H1 = hashToRistretto255(seed, counter++);
-  const H2 = hashToRistretto255(seed, counter++);
-  const H3 = hashToRistretto255(seed, counter++);
-  const H4 = hashToRistretto255(seed, counter++);
+  const [H1, H2, H3, H4] = setGenerators(group, domainBytes);
 
   return {
+    group,
     H1,
     H2,
     H3,
     H4,
     L,
-    domainSeparator,
+    domainSeparator: domainBytes,
   };
 }
 
 /**
- * Validate a domain separator string
+ * Validate a domain separator string.
  *
- * Section 3.1: Each component MUST NOT contain the colon character ':'
+ * Recommended format: "ACT-v1:organization:service:deployment:version"
  */
 export function validateDomainSeparator(domainSeparator: string): boolean {
-  // Check for recommended format
   const parts = domainSeparator.split(':');
 
   if (parts.length < 5) {
     return false;
   }
 
-  // First part should be "ACT-v1"
   if (parts[0] !== 'ACT-v1') {
     return false;
   }
@@ -147,12 +170,12 @@ export function validateDomainSeparator(domainSeparator: string): boolean {
 }
 
 /**
- * Create a properly formatted domain separator
+ * Create a properly formatted domain separator.
  *
  * @param organization - Organization identifier (no colons)
  * @param service - Service name (no colons)
  * @param deploymentId - Deployment environment (no colons)
- * @param version - ISO 8601 date YYYY-MM-DD (no colons)
+ * @param version - Version string, e.g., YYYY-MM-DD (no colons)
  */
 export function createDomainSeparator(
   organization: string,
@@ -160,7 +183,6 @@ export function createDomainSeparator(
   deploymentId: string,
   version: string
 ): string {
-  // Validate no colons in components
   for (const part of [organization, service, deploymentId, version]) {
     if (part.includes(':')) {
       throw new ACTError(

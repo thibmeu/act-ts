@@ -13,7 +13,7 @@ import {
   proveSpend,
   verifySpendProof,
   SeededPRNGForTestingOnly,
-} from '../src/index-vnext.js';
+} from '../src/index.js';
 
 describe('Debug Spend', () => {
   it('verifies ABar computation matches', () => {

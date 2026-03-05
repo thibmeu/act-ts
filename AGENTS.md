@@ -1,6 +1,6 @@
 # Agent Guidelines
 
-**Generated:** 2026-03-02 | **Commit:** 2ee6e7c | **Branch:** main
+**Generated:** 2026-03-05 | **Commit:** bb967d0 | **Branch:** main
 
 Anonymous Credit Tokens (ACT) + sigma protocols in TypeScript. Targets: browser, Cloudflare Workers, Node.js.
 
@@ -24,23 +24,21 @@ packages/
   sigma-proofs/       # Sigma protocols (119 tests)
     src/fiat-shamir/  # SHAKE128 sponge, NISigmaProtocol
     src/ciphersuites/ # ristretto255, P-256, BLS12-381
-  act-ts/             # ACT core (121 tests) - vnext active
-    src/*-vnext.ts    # New API (use these)
-    src/*.ts          # Old API (deprecated)
+  act-ts/             # ACT core (121 tests)
+    src/              # Main API (v0.1.0)
   privacypass-ts/     # Privacy Pass integration (96 tests)
 docs/
   ARCHITECTURE.md     # Technical design
-  VNEXT_MIGRATION.md  # Migration notes
 ```
 
 ---
 
 ## Specifications
 
-| Package      | Spec                                                                                                         | Notes                             |
-| ------------ | ------------------------------------------------------------------------------------------------------------ | --------------------------------- |
-| sigma-proofs | [draft-irtf-cfrg-sigma-protocols-01](https://www.ietf.org/archive/id/draft-irtf-cfrg-sigma-protocols-01.txt) | Complete                          |
-| act-ts       | [draft-schlesinger-cfrg-act-01](https://www.ietf.org/archive/id/draft-schlesinger-cfrg-act-01.txt)           | vnext uses algebraic range proofs |
+| Package      | Spec                                                                                                         | Notes                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------ | ---------------------- |
+| sigma-proofs | [draft-irtf-cfrg-sigma-protocols-01](https://www.ietf.org/archive/id/draft-irtf-cfrg-sigma-protocols-01.txt) | Complete               |
+| act-ts       | [draft-schlesinger-cfrg-act-01](https://www.ietf.org/archive/id/draft-schlesinger-cfrg-act-01.txt)           | Algebraic range proofs |
 
 ---
 
@@ -53,11 +51,11 @@ docs/
 | Schnorr proofs   | `sigma-proofs/src/schnorr.ts`                           |
 | Fiat-Shamir      | `sigma-proofs/src/fiat-shamir/sponge.ts`, `ni-sigma.ts` |
 | Test DRNG        | `sigma-proofs/src/test-drng.ts`                         |
-| ACT issuance     | `act-ts/src/issuance-vnext.ts`                          |
-| ACT spending     | `act-ts/src/spend-vnext.ts`                             |
-| Range proofs     | `act-ts/src/spend-vnext.ts:buildSpendRelation()`        |
-| TLS encoding     | `act-ts/src/encoding-vnext.ts`                          |
-| System params    | `act-ts/src/params-vnext.ts`                            |
+| ACT issuance     | `act-ts/src/issuance.ts`                                |
+| ACT spending     | `act-ts/src/spend.ts`                                   |
+| Range proofs     | `act-ts/src/spend.ts:buildSpendRelation()`              |
+| TLS encoding     | `act-ts/src/encoding.ts`                                |
+| System params    | `act-ts/src/params.ts`                                  |
 
 ---
 
@@ -110,8 +108,8 @@ docs/
 
 | Package        | Status   | Tests |
 | -------------- | -------- | ----- |
-| sigma-proofs   | Complete | 119   |
-| act-ts         | vnext    | 121   |
+| sigma-proofs   | v0.1.0   | 119   |
+| act-ts         | v0.1.0   | 121   |
 | privacypass-ts | Complete | 96    |
 
 ### What's Done
@@ -119,8 +117,8 @@ docs/
 - SHAKE128 Fiat-Shamir (draft-irtf-cfrg-fiat-shamir-01)
 - SHAKE128 sponge verified against spec vectors
 - BLS12-381 G1 ciphersuite
-- Algebraic range proofs (replacing CDS OR-proofs)
-- TLS wire format (replacing CBOR)
+- Algebraic range proofs
+- TLS wire format
 - Horner optimization for `pow2WeightedSum()`
 - TestDRNGForTestingOnly for deterministic proofs
 - Optional RNG injection for proverCommit/prove/proveBatchable
@@ -138,5 +136,4 @@ docs/
 | --------------- | ------------------------------------------------ |
 | `@noble/curves` | Ristretto255, P-256, BLS12-381, scalar/point ops |
 | `@noble/hashes` | SHAKE128, SHA-512                                |
-| `cbor2`         | CBOR encoding (old API)                          |
 | `fast-check`    | Property-based testing                           |

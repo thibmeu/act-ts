@@ -1,5 +1,5 @@
 /**
- * TLS Wire Format Encoding Tests (VNEXT)
+ * TLS Wire Format Encoding Tests (Main)
  */
 
 import { describe, it, expect } from 'vitest';
@@ -25,7 +25,7 @@ import {
   decodePublicKey,
   EncodingError,
   EncodingErrorCode,
-} from '../src/encoding-vnext.js';
+} from '../src/encoding.js';
 import type {
   IssuanceRequest,
   IssuanceResponse,
@@ -37,7 +37,7 @@ import type {
   PrivateKey,
   PublicKey,
   Scalar,
-} from '../src/types-vnext.js';
+} from '../src/types.js';
 
 const group = ristretto255;
 
@@ -48,7 +48,7 @@ function randomBytes(n: number): Uint8Array {
   return bytes;
 }
 
-describe('TLS Wire Format Encoding (VNEXT)', () => {
+describe('TLS Wire Format Encoding (Main)', () => {
   describe('IssuanceRequest', () => {
     it('roundtrips correctly', () => {
       const req: IssuanceRequest = {

@@ -1,5 +1,5 @@
 /**
- * Tests for ACT VNEXT (sigma-draft-compliance)
+ * Tests for ACT Main (sigma-draft-compliance)
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -21,9 +21,9 @@ import {
   type SystemParams,
   type KeyPair,
   type PRNG,
-} from '../src/index-vnext.js';
+} from '../src/index.js';
 
-describe('ACT VNEXT', () => {
+describe('ACT Main', () => {
   const group = ristretto255;
   let params: SystemParams;
   let issuerKeys: KeyPair;

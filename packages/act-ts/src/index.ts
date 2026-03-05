@@ -2,10 +2,13 @@
  * Anonymous Credit Tokens (ACT)
  *
  * Implementation of draft-schlesinger-cfrg-act-01
- * https://www.ietf.org/archive/id/draft-schlesinger-cfrg-act-01.txt
+ * using draft-irtf-cfrg-sigma-protocols-01 and draft-irtf-cfrg-fiat-shamir-01.
  *
  * @module
  */
+
+// Re-export sigma-proofs group for convenience
+export { ristretto255 } from 'sigma-proofs';
 
 // Core types
 export type {
@@ -22,24 +25,27 @@ export type {
   SpendState,
   SpendProof,
   Refund,
+  PRNG,
 } from './types.js';
 
 export { ACTError, ACTErrorCode } from './types.js';
 
-// Group operations
-export { group, Ristretto255Scalar, Ristretto255Element } from './group.js';
-
 // System parameters
-export { generateParameters, validateDomainSeparator, createDomainSeparator } from './params.js';
+export {
+  generateParameters,
+  setGenerators,
+  validateDomainSeparator,
+  createDomainSeparator,
+} from './params.js';
 
 // Key generation
 export {
   keyGen,
+  derivePublicKey,
   privateKeyToBytes,
   privateKeyFromBytes,
   publicKeyToBytes,
   publicKeyFromBytes,
-  derivePublicKey,
 } from './keygen.js';
 
 // Issuance protocol
@@ -47,8 +53,8 @@ export {
   issueRequest,
   issueResponse,
   verifyIssuance,
-  createIssuanceFlow,
-  type IssuanceFlow,
+  serializeProof,
+  deserializeProof,
 } from './issuance.js';
 
 // Spending protocol
@@ -58,36 +64,34 @@ export {
   issueRefund,
   constructRefundToken,
   verifyAndRefund,
+  getSpendInstanceLabel,
 } from './spend.js';
 
-// Transcript (for advanced use)
-export { Transcript, SimpleTranscript, PROTOCOL_VERSION } from './transcript.js';
-
-// Utilities
-export { toHex } from './rng.js';
-
-// CBOR wire format (Section 4)
+// TLS wire format encoding
 export {
   encodeIssuanceRequest,
   decodeIssuanceRequest,
   encodeIssuanceResponse,
   decodeIssuanceResponse,
-  encodeCreditToken,
-  decodeCreditToken,
   encodeSpendProof,
   decodeSpendProof,
   encodeRefund,
   decodeRefund,
-  encodePreIssuance,
-  decodePreIssuance,
-  encodePreRefund,
-  decodePreRefund,
-  encodeKeyPair,
-  decodeKeyPair,
+  encodeCreditToken,
+  decodeCreditToken,
+  encodeIssuanceState,
+  decodeIssuanceState,
+  encodeSpendState,
+  decodeSpendState,
+  encodePrivateKey,
+  decodePrivateKey,
   encodePublicKey,
   decodePublicKey,
-  encodeError,
-  decodeError,
-} from './cbor.js';
+  EncodingError,
+  EncodingErrorCode,
+} from './encoding.js';
 
-export const VERSION = '0.0.1';
+// RNG implementations
+export { WebCryptoPRNG, SeededPRNGForTestingOnly, defaultPRNG, toHex } from './rng.js';
+
+export const VERSION = '0.1.0';

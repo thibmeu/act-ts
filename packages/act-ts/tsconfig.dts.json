@@ -7,13 +7,13 @@
     "outDir": "./dist"
   },
   "include": [
-    "src/index-vnext.ts",
-    "src/types-vnext.ts",
-    "src/params-vnext.ts",
-    "src/keygen-vnext.ts",
-    "src/issuance-vnext.ts",
-    "src/spend-vnext.ts",
-    "src/encoding-vnext.ts",
+    "src/index.ts",
+    "src/types.ts",
+    "src/params.ts",
+    "src/keygen.ts",
+    "src/issuance.ts",
+    "src/spend.ts",
+    "src/encoding.ts",
     "src/rng.ts"
   ]
 }
