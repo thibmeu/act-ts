@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Publish sigma-proofs
+        run: |
+          if [[ "${{ github.ref_name }}" == *"-act"* ]]; then
+            npm publish -w sigma-proofs --tag act
+          else
+            npm publish -w sigma-proofs
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish act-ts
+        run: |
+          if [[ "${{ github.ref_name }}" == *"-act"* ]]; then
+            npm publish -w act-ts --tag act
+          else
+            npm publish -w act-ts
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
