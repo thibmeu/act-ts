@@ -107,20 +107,20 @@ const decoded = decodeIssuanceRequest(bytes);
 
 ## Protocol Flow
 
-```
-Client                                    Issuer
-  |                                         |
-  |-- IssueRequest (K, proof) ------------->|
-  |                                         |
-  |<-- IssueResponse (A, e, c, proof) ------|
-  |                                         |
-  | [Client verifies and stores token]      |
-  |                                         |
-  |-- SpendProof (k, s, A', B_bar, ...) --->|
-  |                                         |
-  |<-- Refund (A*, e*, t, proof) -----------|
-  |                                         |
-  | [Client constructs new token]           |
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant I as Issuer
+
+    Note over C,I: Issuance
+    C->>I: IssueRequest (K, proof)
+    I->>C: IssueResponse (A, e, c, proof)
+    Note over C: Verify & store token
+
+    Note over C,I: Spending
+    C->>I: SpendProof (k, s, A', B̄, ...)
+    I->>C: Refund (A*, e*, t, proof)
+    Note over C: Construct new token
 ```
 
 ## Security Properties
