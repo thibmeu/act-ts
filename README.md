@@ -64,18 +64,17 @@ import {
   proveSpend,
   verifyAndRefund,
   constructRefundToken,
-  WebCryptoPRNG,
+  defaultPRNG,
 } from 'act-ts';
 
 // Setup
 const group = ristretto255;
-const rng = new WebCryptoPRNG();
-const domainSeparator = new TextEncoder().encode('ACT-v1:example:api:prod');
-const params = generateParameters(group, domainSeparator, 64); // L=64 bits
+const rng = defaultPRNG;
+const params = generateParameters(group, 'ACT-v1:example:api:prod', 64); // L=64 bits
 const { privateKey: sk, publicKey: pk } = keyGen(group, rng);
 
 // Issuance: Client requests 100 credits
-const ctx = group.hashToScalar(new Uint8Array([1, 2, 3])); // context binding
+const ctx = group.scalarFromBigint(0x1234n); // context binding
 const [request, clientState] = issueRequest(params, ctx, rng);
 const response = issueResponse(params, sk, request, 100n, ctx, rng);
 const token = verifyIssuance(params, pk, response, clientState);
@@ -90,42 +89,19 @@ const newToken = constructRefundToken(params, pk, proof, refund, spendState);
 
 ## Development
 
-| Task    | Command          |
-| ------- | ---------------- |
-| Install | `npm install`    |
-| Build   | `npm run build`  |
-| Test    | `npm test`       |
-| Lint    | `npm run lint`   |
-| Format  | `npm run format` |
-
-### Project Structure
-
-```
-packages/
-  sigma-proofs/     # Zero-knowledge proof primitives
-  act-ts/           # Core ACT protocol
-docs/
-  ARCHITECTURE.md   # Technical design
+```bash
+npm install       # Install dependencies
+npm run build     # Build all packages
+npm test          # Run tests
+npm run lint      # Lint and format check
 ```
 
-## Status
+### Structure
 
-| Package      | Status | Tests       |
-| ------------ | ------ | ----------- |
-| sigma-proofs | v0.1.0 | 119 passing |
-| act-ts       | v0.1.0 | 121 passing |
-
-### Roadmap
-
-- [x] sigma-proofs: LinearRelation, SchnorrProof, NISigmaProtocol
-- [x] sigma-proofs: SHAKE128 Fiat-Shamir (draft-irtf-cfrg-fiat-shamir-01)
-- [x] sigma-proofs: BLS12-381 G1 ciphersuite
-- [x] act-ts: Issuance, spending, range proofs (draft-schlesinger-cfrg-act-01)
-- [x] act-ts: Algebraic range proofs
-- [x] act-ts: TLS wire format encoding
-- [x] act-ts: Horner optimization for pow2-weighted sums
-- [ ] sigma-proofs: Spec test vector interop (transcript alignment with POC)
-- [ ] act-ts: Interop testing with Rust reference implementation
+- `packages/sigma-proofs/` — Zero-knowledge proof primitives
+- `packages/act-ts/` — Core ACT protocol
+- `packages/privacypass-ts/` — Privacy Pass integration
+- `docs/ARCHITECTURE.md` — Technical design
 
 ## Security Considerations
 
