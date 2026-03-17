@@ -4,7 +4,7 @@
  * Implements Section 7 of draft-irtf-cfrg-fiat-shamir-01.
  */
 
-import { shake128 } from '@noble/hashes/sha3';
+import { shake128 } from '@noble/hashes/sha3.js';
 
 /**
  * DuplexSponge interface (Section 2 of draft-irtf-cfrg-fiat-shamir-01).

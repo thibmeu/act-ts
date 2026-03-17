@@ -6,7 +6,7 @@
  * - SeededPRNGForTestingOnly: Deterministic PRNG for testing (SHAKE128-based)
  */
 
-import { shake128 } from '@noble/hashes/sha3';
+import { shake128 } from '@noble/hashes/sha3.js';
 
 /**
  * PRNG interface for deterministic randomness.

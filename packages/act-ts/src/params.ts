@@ -7,7 +7,7 @@
  * Uses SHAKE128 per the new draft (replacing BLAKE3).
  */
 
-import { shake128 } from '@noble/hashes/sha3';
+import { shake128 } from '@noble/hashes/sha3.js';
 import type { Group, GroupElement } from 'sigma-proofs';
 import { ACTError, ACTErrorCode } from './errors.js';
 import { toHex } from './rng.js';
