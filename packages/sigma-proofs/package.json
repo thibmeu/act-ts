@@ -39,6 +39,6 @@
     "@noble/hashes": "2.0.1"
   },
   "devDependencies": {
-    "vitest": "3.2.3"
+    "vitest": "4.1.0"
   }
 }
