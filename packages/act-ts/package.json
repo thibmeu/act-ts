@@ -40,10 +40,10 @@
   "dependencies": {
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^1.7.2",
-    "sigma-proofs": "*"
+    "sigma-proofs": "^0.1.0"
   },
   "devDependencies": {
-    "tsx": "^4.19.0",
+    "tsx": "^4.21.0",
     "vitest": "^3.2.3"
   }
 }
