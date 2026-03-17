@@ -1,0 +1,45 @@
+version: 2
+updates:
+  # Root package.json
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      dev-dependencies:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: 'deps'
+
+  # sigma-proofs package
+  - package-ecosystem: npm
+    directory: /packages/sigma-proofs
+    schedule:
+      interval: weekly
+    groups:
+      all-dependencies:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: 'deps(sigma-proofs)'
+
+  # act-ts package
+  - package-ecosystem: npm
+    directory: /packages/act-ts
+    schedule:
+      interval: weekly
+    groups:
+      all-dependencies:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: 'deps(act-ts)'
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'deps(ci)'
