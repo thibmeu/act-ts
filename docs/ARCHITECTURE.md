@@ -18,16 +18,16 @@ packages/
 
 A relation is sparse: equations of image terms `(element, coeff)` and terms `(scalar, element, coeff)`, with the generator at element index 0. The XOF duplex sponge is used for one absorb-then-squeeze, which is SHAKE128 over `session_id || 0^136 || data`.
 
-### Sync and async from one implementation
+### Batched multiplication
 
-Prove and verify, and every ACT operation, are generators (`Effect<R>`) that yield batches of scalar multiplications (`Job`: point, scalar, secret?, equation group) and receive the products. `runSync` executes batches on noble; `runAsync` hands them to the suite's native backend, `mulManyWebCrypto` for P-256 (`webcrypto.ts`):
+Prove and verify, and every ACT operation, are `async` functions that hand each round of scalar multiplications to `mulMany` as one batch (`Job`: point, scalar, secret?, equation group). `mulMany` runs it on the suite's native backend, `mulManyWebCrypto` for P-256 (`webcrypto.ts`), or on noble:
 
 - ECDH `deriveBits(k, Q)` gives `x(k·Q)` natively. Importing `k` (PKCS#8) and exporting it as JWK yields `K = k·G`; with `x(k·(Q+G)) = x(k·Q + K)`, the addition formula gives `y` with one division (batched), no square root. A job on `G` is free.
 - Cost per distinct scalar is one import (~120 µs, main thread); per distinct point two public imports (cached per point object, so generators are imported once). Derivations run off the main thread in Node.
 - Public scalars `k` and `p − k` share one import. **Secret scalars are never shared or special-cased**: a secret `k` is computed as `(k+1)·Q − Q`, so zero (a hidden bit) takes the same path, and equal secrets are imported separately. `test/protocol.test.ts` checks that a spend's import count does not depend on the balance.
 - Any failure (engine without the formats, identity results, a point off the curve) falls back to noble per job.
 
-`runSync` merges jobs on the same point within an equation (one multiplication); the WebCrypto backend keeps them apart to share scalars such as the challenge across equations.
+On noble, jobs on the same point within an equation are merged into one multiplication; the WebCrypto backend keeps them apart to share scalars such as the challenge across equations.
 
 Other performance choices, all generic:
 

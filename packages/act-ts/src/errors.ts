@@ -15,10 +15,10 @@ export type ACTErrorCode =
 
 export class ACTError extends Error {
   override name = 'ACTError';
-  constructor(
-    readonly code: ACTErrorCode,
-    message: string
-  ) {
+  readonly code: ACTErrorCode;
+
+  constructor(code: ACTErrorCode, message: string) {
     super(`${code}: ${message}`);
+    this.code = code;
   }
 }

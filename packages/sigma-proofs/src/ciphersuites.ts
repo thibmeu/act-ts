@@ -2,12 +2,12 @@
  * Ciphersuites of draft-irtf-cfrg-sigma-protocols-03, Section 8.
  */
 
+import type { WeierstrassPoint, WeierstrassPointCons } from '@noble/curves/abstract/weierstrass.js';
 import { bls12_381 } from '@noble/curves/bls12-381.js';
 import { p256 } from '@noble/curves/nist.js';
-import type { WeierstrassPoint, WeierstrassPointCons } from '@noble/curves/abstract/weierstrass.js';
 import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/utils.js';
-import type { Job } from './effects.js';
-import { mulManyWebCrypto } from './webcrypto.js';
+import type { Job } from './mul.ts';
+import { mulManyWebCrypto } from './webcrypto.ts';
 
 export type Point = WeierstrassPoint<bigint>;
 
@@ -26,8 +26,8 @@ export interface Ciphersuite {
   readonly Ne: number;
   /** Scalar encoding length. */
   readonly Ns: number;
-  /** Native batch multiplication for the asynchronous API, if available. */
-  readonly mulMany?: (jobs: readonly Job[]) => Promise<Point[]>;
+  /** Native batch multiplication; resolves to undefined where unavailable. */
+  readonly mulMany?: (jobs: readonly Job[]) => Promise<Point[] | undefined>;
 }
 
 function suite(
@@ -40,13 +40,13 @@ function suite(
 }
 
 /**
- * Builds noble's fixed-base table (window 8) for a long-lived point, such as
- * a generator of an application, and returns it. The synchronous API then
- * multiplies it several times faster.
+ * Marks a long-lived point, such as a generator of an application, for
+ * noble's fixed-base table (window 8), built on its first noble
+ * multiplication; returns it. The synchronous API then multiplies it several
+ * times faster. The asynchronous API never needs the table.
  */
 export function registerFixedBase(point: Point): Point {
-  point.precompute(8, false);
-  return point;
+  return point.precompute(8);
 }
 
 /** sigma-proofs_Shake128_P256 (Section 8.1). */
@@ -78,7 +78,7 @@ export function deserializeScalar(suite: Ciphersuite, bytes: Uint8Array): bigint
 }
 
 /** Group.serialize of one element; the identity has no encoding. */
-export function serializeElement(suite: Ciphersuite, point: Point): Uint8Array {
+export function serializeElement(_suite: Ciphersuite, point: Point): Uint8Array {
   if (point.is0()) throw new SigmaError('cannot serialize the identity');
   return point.toBytes(true);
 }

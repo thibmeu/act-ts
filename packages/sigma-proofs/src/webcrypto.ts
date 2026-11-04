@@ -22,8 +22,8 @@
 import { normalizeZ } from '@noble/curves/abstract/curve.js';
 import { p256 } from '@noble/curves/nist.js';
 import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/utils.js';
-import type { Point } from './ciphersuites.js';
-import { type Job, mulCt } from './effects.js';
+import type { Point } from './ciphersuites.ts';
+import { type Job, mulCt } from './mul.ts';
 
 const { Point: P256Point } = p256;
 const Fp = P256Point.Fp;
@@ -71,10 +71,13 @@ interface PrivateEntry {
   y: bigint;
 }
 
-/** Runs a batch of P-256 jobs on WebCrypto. Shared scalars and points are imported once. */
-export async function mulManyWebCrypto(jobs: readonly Job[]): Promise<Point[]> {
+/**
+ * Runs a batch of P-256 jobs on WebCrypto; shared scalars and points are
+ * imported once. Resolves to undefined where WebCrypto lacks what it needs.
+ */
+export async function mulManyWebCrypto(jobs: readonly Job[]): Promise<Point[] | undefined> {
   const s = globalThis.crypto?.subtle;
-  if (!s || unsupported) return jobs.map(noble);
+  if (!s || unsupported) return undefined;
   return mulManyWebCrypto0(s, jobs);
 }
 

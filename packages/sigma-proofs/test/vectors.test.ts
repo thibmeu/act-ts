@@ -3,38 +3,47 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import { describe, expect, it } from 'vitest';
 import {
   BLS12381,
-  LinearRelation,
-  P256,
+  type Ciphersuite,
   decodeField,
   deriveSessionId,
   deserializeScalar,
+  LinearRelation,
+  P256,
   proveBatchable,
-  proveBatchableAsync,
   proveCompact,
-  proveCompactAsync,
   spongeInit,
   verifyBatchable,
-  verifyBatchableAsync,
   verifyCompact,
-  verifyCompactAsync,
-} from '../src/index.js';
+} from '../src/index.ts';
 
 /** Appendix A of draft-irtf-cfrg-sigma-protocols-03, one record per vector. */
 const vectors = readFileSync(new URL('./vectors/sigma-protocols-03.txt', import.meta.url), 'utf8')
   .trim()
   .split('\n\n')
-  .map((block) =>
-    Object.fromEntries(
-      block.split('\n').map((line) => {
-        const [k = '', v = ''] = line.split(' = ');
-        return [k, v];
-      })
-    )
+  .map(
+    (block) =>
+      new Map(
+        block.split('\n').map((line) => {
+          const [k = '', v = ''] = line.split(' = ');
+          return [k, v];
+        })
+      )
   );
 
 const suites = { [P256.id]: P256, [BLS12381.id]: BLS12381 };
-const field = (v: Record<string, string>, k: string): string => {
-  const value = v[k];
+
+/** The suite without its native backend, so that noble runs every multiplication. */
+const withoutNative = ({ mulMany: _native, ...suite }: Ciphersuite): Ciphersuite => suite;
+/** Every backend a suite can run on: native (WebCrypto for P-256) and noble. */
+const backends = (suite: Ciphersuite): [string, Ciphersuite][] =>
+  suite.mulMany
+    ? [
+        ['native', suite],
+        ['noble', withoutNative(suite)],
+      ]
+    : [['noble', suite]];
+const field = (v: Map<string, string>, k: string): string => {
+  const value = v.get(k);
   if (value === undefined) throw new Error(`missing ${k}`);
   return value;
 };
@@ -61,52 +70,44 @@ describe('draft-irtf-cfrg-sigma-protocols-03 vectors', () => {
       const suite = suites[field(v, 'Ciphersuite')];
       if (!suite) throw new Error('unknown suite');
       const sessionId = deriveSessionId(field(v, 'Tag'));
-      if (v.SessionId) expect(bytesToHex(sessionId)).toBe(v.SessionId);
+      if (v.has('SessionId')) expect(bytesToHex(sessionId)).toBe(field(v, 'SessionId'));
       const proof = hexToBytes(field(v, 'NargString'));
       const compact = field(v, 'Flavor') === 'compact';
-      let accepted: boolean;
-      let acceptedAsync: boolean;
-      try {
-        const relation = LinearRelation.deserialize(suite, hexToBytes(field(v, 'Instance')));
-        accepted = (compact ? verifyCompact : verifyBatchable)(sessionId, relation, proof);
-        acceptedAsync = await (compact ? verifyCompactAsync : verifyBatchableAsync)(
-          sessionId,
-          relation,
-          proof
-        );
-      } catch {
-        accepted = acceptedAsync = false;
+      for (const [backend, s] of backends(suite)) {
+        let accepted: boolean;
+        try {
+          const relation = LinearRelation.deserialize(s, hexToBytes(field(v, 'Instance')));
+          accepted = await (compact ? verifyCompact : verifyBatchable)(sessionId, relation, proof);
+        } catch {
+          accepted = false;
+        }
+        expect(accepted, backend).toBe(field(v, 'Expected') === 'accept');
       }
-      expect(accepted).toBe(field(v, 'Expected') === 'accept');
-      expect(acceptedAsync).toBe(accepted);
     });
 
-    if (v.Witness) {
-      it(`${id} reproves byte for byte, sync and async`, async () => {
+    if (v.has('Witness')) {
+      it(`${id} reproves byte for byte, on every backend`, async () => {
         const suite = suites[field(v, 'Ciphersuite')] ?? P256;
         const relation = LinearRelation.deserialize(suite, hexToBytes(field(v, 'Instance')));
         const raw = hexToBytes(field(v, 'Witness'));
         const witness = Array.from({ length: raw.length / suite.Ns }, (_, i) =>
           deserializeScalar(suite, raw.subarray(i * suite.Ns, (i + 1) * suite.Ns))
         );
-        expect(bytesToHex(relation.serialize())).toBe(v.Instance);
+        expect(bytesToHex(relation.serialize())).toBe(field(v, 'Instance'));
         const nonces = testDrngNonces(
           suite.id,
           field(v, 'Flavor'),
           field(v, 'Relation'),
           witness.length
         );
-        const compact = field(v, 'Flavor') === 'compact';
+        const prove = field(v, 'Flavor') === 'compact' ? proveCompact : proveBatchable;
         const sid = deriveSessionId(field(v, 'Tag'));
-        const proof = (compact ? proveCompact : proveBatchable)(sid, relation, witness, nonces);
-        expect(bytesToHex(proof)).toBe(v.NargString);
-        const proofAsync = await (compact ? proveCompactAsync : proveBatchableAsync)(
-          sid,
-          relation,
-          witness,
-          nonces
-        );
-        expect(bytesToHex(proofAsync)).toBe(v.NargString);
+        for (const [backend, s] of backends(suite)) {
+          const rel = LinearRelation.deserialize(s, hexToBytes(field(v, 'Instance')));
+          expect(bytesToHex(await prove(sid, rel, witness, nonces)), backend).toBe(
+            field(v, 'NargString')
+          );
+        }
       });
     }
   }

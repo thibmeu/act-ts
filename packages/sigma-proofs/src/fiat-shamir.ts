@@ -11,14 +11,13 @@ import { shake128 } from '@noble/hashes/sha3.js';
 import { concatBytes, randomBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import {
   type Ciphersuite,
-  type Point,
-  SigmaError,
   deserializeElement,
   deserializeScalar,
+  type Point,
+  SigmaError,
   serializeScalar,
-} from './ciphersuites.js';
-import { type Effect, runAsync, runSync } from './effects.js';
-import type { ImageTerm, LinearRelation } from './linear-relation.js';
+} from './ciphersuites.ts';
+import type { ImageTerm, LinearRelation } from './linear-relation.ts';
 
 /** SHAKE128 rate R (fiat-shamir Section 9.1). */
 const RATE = 168;
@@ -99,18 +98,18 @@ type Openings = ReadonlyMap<number, readonly ImageTerm[]>;
  * ProveCompact (Section 5.5): challenge || response.
  *
  * `nonces` are the prover's commitment randomness, one per witness scalar;
- * they MUST never be reused. `openings` is an optional prover speed-up; see
- * {@link LinearRelation.commit}.
+ * they default to fresh CSPRNG output and MUST never be reused. `openings` is
+ * an optional prover speed-up; see {@link LinearRelation.commit}.
  */
-export function* proveCompactEffect(
+export async function proveCompact(
   sessionId: Uint8Array,
   relation: LinearRelation,
   witness: readonly bigint[],
-  nonces: readonly bigint[],
+  nonces: readonly bigint[] = randomNonces(relation.suite, witness.length),
   openings?: Openings
-): Effect<Uint8Array> {
+): Promise<Uint8Array> {
   checkProverInputs(relation, witness, nonces);
-  const commitments = yield* relation.commit(nonces, openings);
+  const commitments = await relation.commit(nonces, openings);
   const challenge = deriveChallenge(relation, sessionId, commitments);
   return concatBytes(
     serializeScalar(relation.suite, challenge),
@@ -119,11 +118,11 @@ export function* proveCompactEffect(
 }
 
 /** VerifyCompact (Section 5.5). */
-export function* verifyCompactEffect(
+export async function verifyCompact(
   sessionId: Uint8Array,
   relation: LinearRelation,
   proof: Uint8Array
-): Effect<boolean> {
+): Promise<boolean> {
   try {
     const { suite } = relation;
     const image = relation.validate();
@@ -133,7 +132,7 @@ export function* verifyCompactEffect(
       deserializeScalar(suite, proof.subarray(i * suite.Ns, (i + 1) * suite.Ns))
     );
     const [challenge = 0n, ...response] = scalars;
-    const commitments = yield* relation.simulate(challenge, response, image);
+    const commitments = await relation.simulate(challenge, response, image);
     // deriveChallenge rejects an identity commitment (step 7).
     return deriveChallenge(relation, sessionId, commitments) === challenge;
   } catch (e) {
@@ -143,15 +142,15 @@ export function* verifyCompactEffect(
 }
 
 /** ProveBatchable (Section 5.4): commitment || response. */
-export function* proveBatchableEffect(
+export async function proveBatchable(
   sessionId: Uint8Array,
   relation: LinearRelation,
   witness: readonly bigint[],
-  nonces: readonly bigint[],
+  nonces: readonly bigint[] = randomNonces(relation.suite, witness.length),
   openings?: Openings
-): Effect<Uint8Array> {
+): Promise<Uint8Array> {
   checkProverInputs(relation, witness, nonces);
-  const commitments = yield* relation.commit(nonces, openings);
+  const commitments = await relation.commit(nonces, openings);
   const challenge = deriveChallenge(relation, sessionId, commitments);
   return concatBytes(
     ...normalizeZ(relation.suite.Point, commitments).map((c) => c.toBytes(true)),
@@ -160,11 +159,11 @@ export function* proveBatchableEffect(
 }
 
 /** VerifyBatchable (Section 5.4). */
-export function* verifyBatchableEffect(
+export async function verifyBatchable(
   sessionId: Uint8Array,
   relation: LinearRelation,
   proof: Uint8Array
-): Effect<boolean> {
+): Promise<boolean> {
   try {
     const { suite } = relation;
     const image = relation.validate();
@@ -179,7 +178,7 @@ export function* verifyBatchableEffect(
       deserializeScalar(suite, proof.subarray(base + i * suite.Ns, base + (i + 1) * suite.Ns))
     );
     const challenge = deriveChallenge(relation, sessionId, commitments);
-    const expected = yield* relation.simulate(challenge, response, image);
+    const expected = await relation.simulate(challenge, response, image);
     return expected.every((p, i) => {
       const c = commitments[i];
       return c !== undefined && p.equals(c);
@@ -189,65 +188,3 @@ export function* verifyBatchableEffect(
     throw e;
   }
 }
-
-// Synchronous (noble) and asynchronous (native backend) entry points.
-
-export const proveCompact = (
-  sessionId: Uint8Array,
-  relation: LinearRelation,
-  witness: readonly bigint[],
-  nonces: readonly bigint[] = randomNonces(relation.suite, witness.length),
-  openings?: Openings
-): Uint8Array =>
-  runSync(relation.suite, proveCompactEffect(sessionId, relation, witness, nonces, openings));
-
-export const proveCompactAsync = (
-  sessionId: Uint8Array,
-  relation: LinearRelation,
-  witness: readonly bigint[],
-  nonces: readonly bigint[] = randomNonces(relation.suite, witness.length),
-  openings?: Openings
-): Promise<Uint8Array> =>
-  runAsync(relation.suite, proveCompactEffect(sessionId, relation, witness, nonces, openings));
-
-export const verifyCompact = (
-  sessionId: Uint8Array,
-  relation: LinearRelation,
-  proof: Uint8Array
-): boolean => runSync(relation.suite, verifyCompactEffect(sessionId, relation, proof));
-
-export const verifyCompactAsync = (
-  sessionId: Uint8Array,
-  relation: LinearRelation,
-  proof: Uint8Array
-): Promise<boolean> => runAsync(relation.suite, verifyCompactEffect(sessionId, relation, proof));
-
-export const proveBatchable = (
-  sessionId: Uint8Array,
-  relation: LinearRelation,
-  witness: readonly bigint[],
-  nonces: readonly bigint[] = randomNonces(relation.suite, witness.length),
-  openings?: Openings
-): Uint8Array =>
-  runSync(relation.suite, proveBatchableEffect(sessionId, relation, witness, nonces, openings));
-
-export const proveBatchableAsync = (
-  sessionId: Uint8Array,
-  relation: LinearRelation,
-  witness: readonly bigint[],
-  nonces: readonly bigint[] = randomNonces(relation.suite, witness.length),
-  openings?: Openings
-): Promise<Uint8Array> =>
-  runAsync(relation.suite, proveBatchableEffect(sessionId, relation, witness, nonces, openings));
-
-export const verifyBatchable = (
-  sessionId: Uint8Array,
-  relation: LinearRelation,
-  proof: Uint8Array
-): boolean => runSync(relation.suite, verifyBatchableEffect(sessionId, relation, proof));
-
-export const verifyBatchableAsync = (
-  sessionId: Uint8Array,
-  relation: LinearRelation,
-  proof: Uint8Array
-): Promise<boolean> => runAsync(relation.suite, verifyBatchableEffect(sessionId, relation, proof));

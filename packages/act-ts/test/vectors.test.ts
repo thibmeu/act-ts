@@ -17,22 +17,15 @@ import {
   encodeSpend,
   encodeSpendState,
   finalizeIssue,
-  finalizeIssueAsync,
   finalizeRefund,
-  finalizeRefundAsync,
   generateKeys,
   issueRefund,
-  issueRefundAsync,
   issueRequest,
-  issueRequestAsync,
   issueResponse,
-  issueResponseAsync,
   proveSpend,
-  proveSpendAsync,
-  verifySpend,
-  verifySpendAsync,
   type Random,
-} from '../src/index.js';
+  verifySpend,
+} from '../src/index.ts';
 
 /** The draft's `key = value` format, with hex continuation lines. */
 function parse(name: string): Map<string, string> {
@@ -75,129 +68,102 @@ const files = [
   'act-L64.txt',
 ];
 
-const modes = {
-  sync: {
-    issueRequest,
-    issueResponse,
-    finalizeIssue,
-    proveSpend,
-    verifySpend,
-    issueRefund,
-    finalizeRefund,
-  },
-  async: {
-    issueRequest: issueRequestAsync,
-    issueResponse: issueResponseAsync,
-    finalizeIssue: finalizeIssueAsync,
-    proveSpend: proveSpendAsync,
-    verifySpend: verifySpendAsync,
-    issueRefund: issueRefundAsync,
-    finalizeRefund: finalizeRefundAsync,
-  },
-};
+describe.each(files)('%s', (file) => {
+  const v = parse(file);
+  const get = (k: string): string => {
+    const value = v.get(k);
+    if (value === undefined) throw new Error(`missing ${k}`);
+    return value;
+  };
+  const hex = (k: string): Uint8Array => hexToBytes(get(k));
+  const int = (k: string): bigint => BigInt(get(k));
 
-describe.each(files.flatMap((f) => [[f, 'sync'] as const, [f, 'async'] as const]))(
-  '%s (%s)',
-  (file, mode) => {
-    const api = modes[mode];
-    const v = parse(file);
-    const get = (k: string): string => {
-      const value = v.get(k);
-      if (value === undefined) throw new Error(`missing ${k}`);
-      return value;
-    };
-    const hex = (k: string): Uint8Array => hexToBytes(get(k));
-    const int = (k: string): bigint => BigInt(get(k));
-
-    it('replays every entry byte for byte', async () => {
-      // act-rs's generated files omit the suite entries; they use its context.
-      const ctxProto = v.has('suite.ctx_proto') ? hex('suite.ctx_proto') : utf8ToBytes(ACT_RS_CTX);
-      const params = createParams(Number(get('suite.L')), { protocolContext: ctxProto });
-      const ctxCred = hex('suite.ctx_cred');
-      if (v.has('suite.H1')) {
-        for (const h of ['H1', 'H2', 'H3', 'H4'] as const) {
-          expect(bytesToHex(params[h].toBytes(true)), h).toBe(get(`suite.${h}`));
-        }
-        expect(contextScalar(params, ctxCred).toString(16).padStart(64, '0')).toBe(
-          get('suite.ctx')
-        );
+  it('replays every entry byte for byte', async () => {
+    // act-rs's generated files omit the suite entries; they use its context.
+    const ctxProto = v.has('suite.ctx_proto') ? hex('suite.ctx_proto') : utf8ToBytes(ACT_RS_CTX);
+    const params = createParams(Number(get('suite.L')), { protocolContext: ctxProto });
+    const ctxCred = hex('suite.ctx_cred');
+    if (v.has('suite.H1')) {
+      for (const h of ['H1', 'H2', 'H3', 'H4'] as const) {
+        expect(bytesToHex(params[h].toBytes(true)), h).toBe(get(`suite.${h}`));
       }
+      expect(contextScalar(params, ctxCred).toString(16).padStart(64, '0')).toBe(get('suite.ctx'));
+    }
 
-      const keyRng = replay(get('key.rand'));
-      const { skM, pkM } = generateKeys(params, keyRng);
-      expect(keyRng.done()).toBe(true);
-      expect(skM.toString(16).padStart(64, '0')).toBe(get('key.skM'));
-      expect(bytesToHex(encodePublicKey(pkM))).toBe(get('key.pkM'));
+    const keyRng = replay(get('key.rand'));
+    const { skM, pkM } = await generateKeys(params, keyRng);
+    expect(keyRng.done()).toBe(true);
+    expect(skM.toString(16).padStart(64, '0')).toBe(get('key.skM'));
+    expect(bytesToHex(encodePublicKey(pkM))).toBe(get('key.pkM'));
 
-      let rng = replay(get('issue.request.rand'));
-      const { state, request } = await api.issueRequest(params, rng);
-      expect(rng.done()).toBe(true);
-      expect(bytesToHex(encodeIssuanceState(state))).toBe(get('issue.request.state'));
-      expect(bytesToHex(encodeIssueRequest(request))).toBe(get('issue.request.message'));
+    let rng = replay(get('issue.request.rand'));
+    const { state, request } = await issueRequest(params, rng);
+    expect(rng.done()).toBe(true);
+    expect(bytesToHex(encodeIssuanceState(state))).toBe(get('issue.request.state'));
+    expect(bytesToHex(encodeIssueRequest(request))).toBe(get('issue.request.message'));
 
-      rng = replay(get('issue.response.rand'));
-      const response = await api.issueResponse(
+    rng = replay(get('issue.response.rand'));
+    const response = await issueResponse(
+      params,
+      skM,
+      ctxCred,
+      int('issue.response.c'),
+      decodeIssueRequest(hex('issue.request.message')),
+      rng
+    );
+    expect(rng.done()).toBe(true);
+    expect(bytesToHex(encodeIssueResponse(response))).toBe(get('issue.response.message'));
+
+    let credential = await finalizeIssue(
+      params,
+      pkM,
+      ctxCred,
+      state,
+      decodeIssueResponse(params, hex('issue.response.message'))
+    );
+    expect(bytesToHex(encodeCredential(credential))).toBe(get('issue.credential'));
+
+    let spends = 0;
+    for (let i = 1; v.has(`spend${i}.s`); i++, spends++) {
+      const p = `spend${i}`;
+      const ctxSpend = hex(`${p}.ctx_spend`);
+      rng = replay(get(`${p}.rand`));
+      const { state: spendState, proof } = await proveSpend(
         params,
-        skM,
+        credential,
         ctxCred,
-        int('issue.response.c'),
-        decodeIssueRequest(hex('issue.request.message')),
+        int(`${p}.s`),
+        int(`${p}.a`),
+        ctxSpend,
         rng
       );
       expect(rng.done()).toBe(true);
-      expect(bytesToHex(encodeIssueResponse(response))).toBe(get('issue.response.message'));
+      expect(bytesToHex(encodeSpendState(spendState)), `${p}.state`).toBe(get(`${p}.state`));
+      expect(bytesToHex(encodeSpend(proof)), `${p}.message`).toBe(get(`${p}.message`));
 
-      let credential = await api.finalizeIssue(
+      const verified = await verifySpend(
+        params,
+        skM,
+        ctxCred,
+        ctxSpend,
+        decodeSpend(params, hex(`${p}.message`))
+      );
+      rng = replay(get(`${p}.refund.rand`));
+      const refund = await issueRefund(verified, int(`${p}.refund.t`), rng);
+      expect(rng.done()).toBe(true);
+      expect(bytesToHex(encodeRefund(refund)), `${p}.refund`).toBe(get(`${p}.refund.message`));
+
+      credential = await finalizeRefund(
         params,
         pkM,
         ctxCred,
-        state,
-        decodeIssueResponse(params, hex('issue.response.message'))
+        spendState,
+        decodeRefund(params, hex(`${p}.refund.message`))
       );
-      expect(bytesToHex(encodeCredential(credential))).toBe(get('issue.credential'));
-
-      let spends = 0;
-      for (let i = 1; v.has(`spend${i}.s`); i++, spends++) {
-        const p = `spend${i}`;
-        const ctxSpend = hex(`${p}.ctx_spend`);
-        rng = replay(get(`${p}.rand`));
-        const { state: spendState, proof } = await api.proveSpend(
-          params,
-          credential,
-          ctxCred,
-          int(`${p}.s`),
-          int(`${p}.a`),
-          ctxSpend,
-          rng
-        );
-        expect(rng.done()).toBe(true);
-        expect(bytesToHex(encodeSpendState(spendState)), `${p}.state`).toBe(get(`${p}.state`));
-        expect(bytesToHex(encodeSpend(proof)), `${p}.message`).toBe(get(`${p}.message`));
-
-        const verified = await api.verifySpend(
-          params,
-          skM,
-          ctxCred,
-          ctxSpend,
-          decodeSpend(params, hex(`${p}.message`))
-        );
-        rng = replay(get(`${p}.refund.rand`));
-        const refund = await api.issueRefund(verified, int(`${p}.refund.t`), rng);
-        expect(rng.done()).toBe(true);
-        expect(bytesToHex(encodeRefund(refund)), `${p}.refund`).toBe(get(`${p}.refund.message`));
-
-        credential = await api.finalizeRefund(
-          params,
-          pkM,
-          ctxCred,
-          spendState,
-          decodeRefund(params, hex(`${p}.refund.message`))
-        );
-        expect(bytesToHex(encodeCredential(credential)), `${p}.credential`).toBe(
-          get(`${p}.credential`)
-        );
-      }
-      expect(spends).toBeGreaterThanOrEqual(4);
-    });
-  }
-);
+      expect(bytesToHex(encodeCredential(credential)), `${p}.credential`).toBe(
+        get(`${p}.credential`)
+      );
+    }
+    expect(spends).toBeGreaterThanOrEqual(4);
+  });
+});

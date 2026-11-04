@@ -1,15 +1,13 @@
 /**
- * Batched variable-base scalar multiplication.
+ * Batched scalar multiplication.
  *
- * Algorithms that need k * Q for points Q without precomputed tables are
- * written as generators that yield every such multiplication of a round as
- * one batch. A synchronous driver runs the batch on noble; an asynchronous
- * driver hands it to the ciphersuite's native backend (WebCrypto for P-256),
- * which is several times faster and constant time. One implementation, two
- * APIs.
+ * Provers and verifiers collect every scalar multiplication of a round into
+ * one batch, which the ciphersuite's native backend (WebCrypto for P-256)
+ * runs several times faster than noble, and in constant time. Without one,
+ * noble runs the batch.
  */
 
-import type { Ciphersuite, Point } from './ciphersuites.js';
+import type { Ciphersuite, Point } from './ciphersuites.ts';
 
 /**
  * k * Q; `secret` selects a constant-time multiplication. Jobs sharing a
@@ -17,9 +15,6 @@ import type { Ciphersuite, Point } from './ciphersuites.js';
  * same point into one multiplication.
  */
 export type Job = readonly [point: Point, scalar: bigint, secret: boolean, group?: number];
-
-/** A computation that yields batches of jobs and receives their results. */
-export type Effect<R> = Generator<readonly Job[], R, Point[]>;
 
 /**
  * k * P for k in [0, p). noble's constant-time multiply rejects zero, so
@@ -46,7 +41,10 @@ export function mulManyNoble(suite: Ciphersuite, jobs: readonly Job[]): Point[] 
     const [P, k, , group] = job;
     if (group === undefined) return i;
     let byPoint = merged.get(group);
-    if (!byPoint) merged.set(group, (byPoint = new Map()));
+    if (!byPoint) {
+      byPoint = new Map();
+      merged.set(group, byPoint);
+    }
     const first = byPoint.get(P);
     if (first === undefined) {
       byPoint.set(P, i);
@@ -60,26 +58,8 @@ export function mulManyNoble(suite: Ciphersuite, jobs: readonly Job[]): Point[] 
   );
 }
 
-/** Runs an effect with noble only. */
-export function runSync<R>(suite: Ciphersuite, effect: Effect<R>): R {
-  let step = effect.next();
-  while (!step.done) step = effect.next(mulManyNoble(suite, step.value));
-  return step.value;
-}
-
-/** Runs an effect with the ciphersuite's native backend, if any. */
-export async function runAsync<R>(suite: Ciphersuite, effect: Effect<R>): Promise<R> {
-  let step = effect.next();
-  while (!step.done) {
-    const jobs = step.value;
-    const results =
-      suite.mulMany && jobs.length > 0 ? await suite.mulMany(jobs) : mulManyNoble(suite, jobs);
-    step = effect.next(results);
-  }
-  return step.value;
-}
-
-/** Yields one batch; a helper for composing effects. */
-export function* mulAll(jobs: readonly Job[]): Effect<Point[]> {
-  return jobs.length === 0 ? [] : yield jobs;
+/** Runs a batch on the ciphersuite's native backend, or on noble. */
+export async function mulMany(suite: Ciphersuite, jobs: readonly Job[]): Promise<Point[]> {
+  if (jobs.length === 0) return [];
+  return (await suite.mulMany?.(jobs)) ?? mulManyNoble(suite, jobs);
 }

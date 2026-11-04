@@ -7,7 +7,7 @@ TypeScript implementation of EC-ACT, Anonymous Credit Tokens: a keyed-verificati
 
 **Specification:** [draft-schlesinger-mole-ec-act-00](https://datatracker.ietf.org/doc/draft-schlesinger-mole-ec-act/), ciphersuite `P256-SHA256`, interoperable with [act-rs](https://github.com/Moderation-of-unLinkable-Endorsements/act-rs).
 
-**Target Environments:** Browser, Cloudflare Workers, Node.js
+**Target Environments:** Browser, Cloudflare Workers, Node.js (benchmarked on Node only)
 
 ## Packages
 
@@ -40,26 +40,28 @@ import {
 } from 'act-ts';
 
 const params = createParams(8); // balances below 2^8
-const { skM, pkM } = generateKeys(params); // Moderator; pkM is published
+const { skM, pkM } = await generateKeys(params); // Moderator; pkM is published
 const ctxCred = new TextEncoder().encode('epoch-42'); // agreed out of band
 
 // Issuance
-const { state, request } = issueRequest(params);
-const response = issueResponse(params, skM, ctxCred, 100n, request);
-const credential = finalizeIssue(params, pkM, ctxCred, state, response);
+const { state, request } = await issueRequest(params);
+const response = await issueResponse(params, skM, ctxCred, 100n, request);
+const credential = await finalizeIssue(params, pkM, ctxCred, state, response);
 
 // Spend 30 credits, no top-up, bound to the Moderator's challenge.
 const ctxSpend = new TextEncoder().encode('challenge-digest');
-const spend = proveSpend(params, credential, ctxCred, 30n, 0n, ctxSpend);
+const spend = await proveSpend(params, credential, ctxCred, 30n, 0n, ctxSpend);
 const wire = encodeSpend(spend.proof); // store spend.state durably first
 
 // Moderator: verify, then record verified.nullifier atomically before refunding.
-const verified = verifySpend(params, skM, ctxCred, ctxSpend, decodeSpend(params, wire));
-const refund = issueRefund(verified, 5n);
+const verified = await verifySpend(params, skM, ctxCred, ctxSpend, decodeSpend(params, wire));
+const refund = await issueRefund(verified, 5n);
 
-const next = finalizeRefund(params, pkM, ctxCred, spend.state, refund);
+const next = await finalizeRefund(params, pkM, ctxCred, spend.state, refund);
 console.log(next.c); // 75n
 ```
+
+Protocol operations are asynchronous: they batch their elliptic-curve multiplications to WebCrypto, which is several times faster than JavaScript arithmetic, and fall back to noble where WebCrypto is unavailable. See [act-ts performance](./packages/act-ts/README.md#performance).
 
 ## Development
 
@@ -69,9 +71,12 @@ npm run build     # Build all packages
 npm test          # Run tests
 npm run lint      # Lint and format check
 npm run bench     # Benchmarks
+npm run examples --workspace act-ts   # Annotated protocol runs
 ```
 
-Conformance: act-ts replays the draft's Appendix A and every act-rs vector file (L = 1, 2, 4, 8, 16, 64) byte for byte; sigma-proofs passes all 75 vectors of sigma-protocols-03 Appendix A, including adversarial ones, and reproduces every valid proof byte for byte.
+[`packages/act-ts/examples`](./packages/act-ts/examples) walks through issuance, spending, a credential's lifecycle (every spend shape, a replayed spend, refund recovery, an expired context) and the wire and storage encodings, each annotated with the message flow of the draft. The test suite runs them too.
+
+Conformance: act-ts replays the draft's Appendix A and every act-rs vector file (L = 1, 2, 4, 8, 16, 64) byte for byte; sigma-proofs passes all 75 vectors of sigma-protocols-03 Appendix A, including adversarial ones, and reproduces every valid proof byte for byte. Property tests ([fast-check](https://fast-check.dev)) cover codecs (round-trip, canonical, fail closed), relation encoding, proofs under mutation, the WebCrypto backend against noble, and balances over random amounts.
 
 ## Security Considerations
 
@@ -87,7 +92,7 @@ The deployment remains responsible for the nullifier store (record each nullifie
 
 - **Not quantum-resistant**: based on discrete logarithm assumptions
 - **Draft specifications**: the protocol may change before standardization
-- **No constant-time guarantees**: JavaScript BigInt is not constant time (see [@noble/curves](https://github.com/paulmillr/noble-curves#security)); secret-dependent branches are avoided on a best-effort basis
+- **Constant time is best effort**: JavaScript BigInt is not constant time (see [@noble/curves](https://github.com/paulmillr/noble-curves#security)). Scalar multiplications run natively in WebCrypto where available; the remaining arithmetic avoids secret-dependent branches on a best-effort basis
 - **No secret zeroization**: JavaScript cannot reliably wipe BigInt values
 
 ## Related Projects

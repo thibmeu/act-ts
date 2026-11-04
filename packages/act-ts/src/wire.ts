@@ -12,38 +12,42 @@ import {
   type ClientIssuanceState,
   type ClientSpendState,
   type Credential,
+  checkAmount,
   type IssueRequestMessage,
   type IssueResponseMessage,
   type KeyPair,
   type Params,
   type RefundMessage,
   type SpendMessage,
-  checkAmount,
   spendWeights,
   spendWitnessCount,
-} from './act.js';
-import { ACTError } from './errors.js';
+} from './act.ts';
+import { ACTError } from './errors.ts';
 import {
+  deserializeElementOrThrow,
+  deserializeScalarOrThrow,
+  i2osp,
   NE,
   NS,
   type Point,
   Point as PointCons,
-  deserializeElementOrThrow,
-  deserializeScalarOrThrow,
-  i2osp,
   serializeElement,
   serializeScalar,
-} from './group.js';
+} from './group.ts';
 
 const u64 = (x: bigint): Uint8Array => i2osp(x, 8);
 
 class Reader {
-  private off = 0;
-  constructor(private readonly bytes: Uint8Array) {}
+  #off = 0;
+  readonly #bytes: Uint8Array;
+
+  constructor(bytes: Uint8Array) {
+    this.#bytes = bytes;
+  }
   take(n: number): Uint8Array {
-    if (this.off + n > this.bytes.length) throw new ACTError('Deserialize', 'truncated');
-    const out = this.bytes.subarray(this.off, this.off + n);
-    this.off += n;
+    if (this.#off + n > this.#bytes.length) throw new ACTError('Deserialize', 'truncated');
+    const out = this.#bytes.subarray(this.#off, this.#off + n);
+    this.#off += n;
     return out;
   }
   scalar(): bigint {
@@ -65,7 +69,7 @@ class Reader {
     return pok.slice();
   }
   finish(): void {
-    if (this.off !== this.bytes.length) throw new ACTError('Deserialize', 'trailing bytes');
+    if (this.#off !== this.#bytes.length) throw new ACTError('Deserialize', 'trailing bytes');
   }
 }
 

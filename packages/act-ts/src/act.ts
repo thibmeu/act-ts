@@ -7,34 +7,31 @@
 import { mod } from '@noble/curves/abstract/modular.js';
 import { bytesToHex, concatBytes, randomBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import {
-  type Effect,
+  deriveSessionId,
   type ImageTerm,
   type Job,
   LinearRelation,
+  mulMany,
   P256,
-  deriveSessionId,
-  mulAll,
-  proveCompactEffect,
+  proveCompact,
   registerFixedBase,
-  runAsync,
-  runSync,
-  verifyCompactEffect,
+  verifyCompact,
 } from 'sigma-proofs';
-import { ACTError } from './errors.js';
+import { ACTError } from './errors.ts';
 import {
-  NSEED,
-  ORDER,
-  Point,
-  deriveKeyPair,
+  deriveKeyScalar,
   deriveNonces,
   deriveScalars,
   hashToGroup,
   hashToScalar,
   i2osp,
+  NSEED,
+  ORDER,
+  Point,
   serializeElement,
   serializeScalar,
   u16Prefixed,
-} from './group.js';
+} from './group.ts';
 
 /** Source of randomness: random(n) of EC-IHAT Section 2. */
 export type Random = (n: number) => Uint8Array;
@@ -155,16 +152,20 @@ const consumed = new WeakSet<object>();
  * Runs `body` with `value` claimed: a concurrent or later use fails, and
  * the claim becomes permanent only if `body` succeeds.
  */
-function* once<R>(value: object, what: string, body: () => Effect<R>): Effect<R> {
+async function once<R>(value: object, what: string, body: () => Promise<R>): Promise<R> {
+  // Claimed before the first await, so concurrent calls cannot both pass.
   if (consumed.has(value)) throw new ACTError('Value', `${what} was already used`);
   consumed.add(value);
   try {
-    return yield* body();
+    return await body();
   } catch (e) {
     consumed.delete(value);
     throw e;
   }
 }
+
+/** Runs a batch of P-256 multiplications, on WebCrypto where available. */
+const mul = (jobs: readonly Job[]): Promise<Point[]> => mulMany(P256, jobs);
 
 // ---------------------------------------------------------------------------
 // Shared computations
@@ -205,7 +206,10 @@ interface Context {
 const contexts = new WeakMap<Params, Map<string, Context>>();
 function context(params: Params, ctxCred: Uint8Array): Context {
   let cache = contexts.get(params);
-  if (!cache) contexts.set(params, (cache = new Map()));
+  if (!cache) {
+    cache = new Map();
+    contexts.set(params, cache);
+  }
   const key = bytesToHex(ctxCred);
   let cx = cache.get(key);
   if (!cx) {
@@ -263,7 +267,7 @@ const Z = Point.ZERO;
 /** sum_j weights[j] * points[j] by Horner over the public weight bits. */
 function weightedSum(points: readonly Point[], weights: readonly bigint[]): Point {
   let acc = Point.ZERO;
-  const top = weights.reduce((m, w) => (w > m ? w : m), 0n).toString(2).length;
+  const top = Math.max(0, ...weights.map((w) => w.toString(2).length));
   for (let bit = BigInt(top - 1); bit >= 0n; bit--) {
     acc = acc.double();
     points.forEach((p, j) => {
@@ -283,14 +287,14 @@ function tag(params: Params, label: string, bindings: readonly Uint8Array[] = []
 }
 
 /** Prove (Section 4.4.3) with ProverNonces (Section 4.4.2). */
-function* prove(
+async function prove(
   params: Params,
   tagBytes: Uint8Array,
   relation: LinearRelation,
   witness: readonly bigint[],
   random: Random,
   openings?: ReadonlyMap<number, readonly ImageTerm[]>
-): Effect<Uint8Array> {
+): Promise<Uint8Array> {
   const sessionId = deriveSessionId(tagBytes);
   const instance = relation.serialize();
   const secret = concatBytes(...witness.map(serializeScalar));
@@ -303,12 +307,16 @@ function* prove(
     witness.length
   );
   secret.fill(0);
-  return yield* proveCompactEffect(sessionId, relation, witness, nonces, openings);
+  return await proveCompact(sessionId, relation, witness, nonces, openings);
 }
 
 /** Verify (Section 4.4.3). */
-function* verify(tagBytes: Uint8Array, relation: LinearRelation, pok: Uint8Array): Effect<void> {
-  if (!(yield* verifyCompactEffect(deriveSessionId(tagBytes), relation, pok))) {
+async function verify(
+  tagBytes: Uint8Array,
+  relation: LinearRelation,
+  pok: Uint8Array
+): Promise<void> {
+  if (!(await verifyCompact(deriveSessionId(tagBytes), relation, pok))) {
     throw new ACTError('Verify', 'proof verification failed');
   }
 }
@@ -456,19 +464,19 @@ function signingExponent(
 }
 
 /** Signs X_A as (A, e) and proves it under the tag of `label`. */
-function* sign(
+async function sign(
   params: Params,
   skM: bigint,
   label: string,
   XA: Point,
   random: Random
-): Effect<{ A: Point; e: bigint; pok: Uint8Array }> {
+): Promise<{ A: Point; e: bigint; pok: Uint8Array }> {
   const { e, x } = signingExponent(params, skM, label, XA, random);
-  const [A = Point.ZERO, XG = Point.ZERO] = yield* mulAll([
+  const [A = Point.ZERO, XG = Point.ZERO] = await mul([
     [XA, inv(x), true],
     [Point.BASE, x, true],
   ]);
-  const pok = yield* prove(params, tag(params, label), signatureRelation(A, XA, XG), [x], random);
+  const pok = await prove(params, tag(params, label), signatureRelation(A, XA, XG), [x], random);
   return { A, e, pok };
 }
 
@@ -476,7 +484,7 @@ function* sign(
  * Checks the Signature proof of (A, e) under pkM on the message
  * X_A = B + c * H1 + ctx * H4 + K, computing X_A and X_G in one batch.
  */
-function* verifySignature(
+async function verifySignature(
   label: string,
   params: Params,
   pkM: Point,
@@ -486,18 +494,18 @@ function* verifySignature(
   cx: Context,
   K: Point,
   pok: Uint8Array
-): Effect<void> {
-  const [cH1 = Point.ZERO, eG = Point.ZERO] = yield* mulAll([
+): Promise<void> {
+  const [cH1 = Point.ZERO, eG = Point.ZERO] = await mul([
     [params.H1, c, false],
     [Point.BASE, e, false],
   ]);
   const XA = cx.base.add(cH1).add(K);
-  yield* verify(tag(params, label), signatureRelation(A, XA, eG.add(pkM)), pok);
+  await verify(tag(params, label), signatureRelation(A, XA, eG.add(pkM)), pok);
 }
 
 /** B + c * H1 + ctx * H4 + K: X_A of issuance and refunds (c, ctx public). */
-function* signedMessage(params: Params, c: bigint, cx: Context, K: Point): Effect<Point> {
-  const [cH1 = Point.ZERO] = yield* mulAll([[params.H1, c, false]]);
+async function signedMessage(params: Params, c: bigint, cx: Context, K: Point): Promise<Point> {
+  const [cH1 = Point.ZERO] = await mul([[params.H1, c, false]]);
   return cx.base.add(cH1).add(K);
 }
 
@@ -506,13 +514,14 @@ function* signedMessage(params: Params, c: bigint, cx: Context, K: Point): Effec
 // ---------------------------------------------------------------------------
 
 /** G.DeriveKeyPair(seed, info). */
-export function deriveKeys(params: Params, seed: Uint8Array, info: string): KeyPair {
-  const { skM, pkM } = deriveKeyPair(params.ctxProto, seed, info);
+export async function deriveKeys(params: Params, seed: Uint8Array, info: string): Promise<KeyPair> {
+  const skM = deriveKeyScalar(params.ctxProto, seed, info);
+  const [pkM = Point.ZERO] = await mul([[Point.BASE, skM, true]]);
   return { skM, pkM };
 }
 
 /** G.GenerateKeyPair(). */
-export function generateKeys(params: Params, random: Random = randomBytes): KeyPair {
+export function generateKeys(params: Params, random: Random = randomBytes): Promise<KeyPair> {
   return deriveKeys(params, random(NSEED), 'GenerateKeyPair');
 }
 
@@ -521,17 +530,17 @@ export function generateKeys(params: Params, random: Random = randomBytes): KeyP
 // ---------------------------------------------------------------------------
 
 /** IssueRequest (Section 4.5.2). Run by the Client. */
-function* issueRequestEffect(
+export async function issueRequest(
   params: Params,
   random: Random = randomBytes
-): Effect<{ state: ClientIssuanceState; request: IssueRequestMessage }> {
+): Promise<{ state: ClientIssuanceState; request: IssueRequestMessage }> {
   const [k = 0n, r = 0n] = deriveScalars(params.ctxProto, random(NSEED), 'IssueRequest', 2);
-  const [kH2 = Point.ZERO, rH3 = Point.ZERO] = yield* mulAll([
+  const [kH2 = Point.ZERO, rH3 = Point.ZERO] = await mul([
     [params.H2, k, true],
     [params.H3, r, true],
   ]);
   const K = kH2.add(rH3);
-  const pok = yield* prove(
+  const pok = await prove(
     params,
     tag(params, 'IssueRequest'),
     commitmentRelation(params, K),
@@ -542,18 +551,18 @@ function* issueRequestEffect(
 }
 
 /** IssueResponse (Section 4.5.3). Run by the Moderator; verifies the request. */
-function* issueResponseEffect(
+export async function issueResponse(
   params: Params,
   skM: bigint,
   ctxCred: Uint8Array,
   c: bigint,
   request: IssueRequestMessage,
   random: Random = randomBytes
-): Effect<IssueResponseMessage> {
+): Promise<IssueResponseMessage> {
   checkAmount(params, c);
-  yield* verify(tag(params, 'IssueRequest'), commitmentRelation(params, request.K), request.pok);
-  const XA = yield* signedMessage(params, c, context(params, ctxCred), request.K);
-  const { A, e, pok } = yield* sign(params, skM, 'IssueResponse', XA, random);
+  await verify(tag(params, 'IssueRequest'), commitmentRelation(params, request.K), request.pok);
+  const XA = await signedMessage(params, c, context(params, ctxCred), request.K);
+  const { A, e, pok } = await sign(params, skM, 'IssueResponse', XA, random);
   return { A, e, c, pok };
 }
 
@@ -561,18 +570,18 @@ function* issueResponseEffect(
  * FinalizeIssue (Section 4.5.4). Run by the Client; consumes `state` on
  * success.
  */
-function* finalizeIssueEffect(
+export async function finalizeIssue(
   params: Params,
   pkM: Point,
   ctxCred: Uint8Array,
   state: ClientIssuanceState,
   response: IssueResponseMessage
-): Effect<Credential> {
-  return yield* once(state, 'issuance state', function* () {
+): Promise<Credential> {
+  return await once(state, 'issuance state', async () => {
     checkAmount(params, response.c);
     const cx = context(params, ctxCred);
     const { A, e, c, pok } = response;
-    yield* verifySignature('IssueResponse', params, pkM, A, e, c, cx, state.K, pok);
+    await verifySignature('IssueResponse', params, pkM, A, e, c, cx, state.K, pok);
     return { k: state.k, c: response.c, r: state.r, A: response.A, e: response.e };
   });
 }
@@ -586,7 +595,7 @@ function* finalizeIssueEffect(
  *
  * The returned state MUST be stored durably before `proof` leaves the Client.
  */
-function proveSpendEffect(
+export function proveSpend(
   params: Params,
   credential: Credential,
   ctxCred: Uint8Array,
@@ -594,13 +603,13 @@ function proveSpendEffect(
   a: bigint,
   ctxSpend: Uint8Array,
   random: Random = randomBytes
-): Effect<{ state: ClientSpendState; proof: SpendMessage }> {
+): Promise<{ state: ClientSpendState; proof: SpendMessage }> {
   return once(credential, 'credential', () =>
     proveSpendBody(params, credential, ctxCred, s, a, ctxSpend, random)
   );
 }
 
-function* proveSpendBody(
+async function proveSpendBody(
   params: Params,
   credential: Credential,
   ctxCred: Uint8Array,
@@ -608,7 +617,7 @@ function* proveSpendBody(
   a: bigint,
   ctxSpend: Uint8Array,
   random: Random
-): Effect<{ state: ClientSpendState; proof: SpendMessage }> {
+): Promise<{ state: ClientSpendState; proof: SpendMessage }> {
   const { k, c, r, A, e } = credential;
   const { H1, H2, H3 } = params;
   checkAmount(params, s);
@@ -631,7 +640,7 @@ function* proveSpendBody(
   // Every fixed-base product of the spend, in one batch: k H2, r H3, c H1,
   // kstar H2, rn H3, then s1[j] H3 per bit, or rc H3 for a refresh.
   const blindings = derived.slice(4);
-  const fixedProducts = yield* mulAll([
+  const fixedProducts = await mul([
     [H2, k, true],
     [H3, r, true],
     [H1, c, true],
@@ -647,7 +656,7 @@ function* proveSpendBody(
   const Bmsg = H1prime.add(cH1).add(rH3);
   // One batch: A_bar = r2 * B_bar - e * A_prime = (r1 r2) * B_msg - (e r1 r2) * A.
   const r1r2 = scalar(r1 * r2);
-  const [Aprime = Point.ZERO, Bbar = Point.ZERO, X = Point.ZERO, Y = Point.ZERO] = yield* mulAll([
+  const [Aprime = Point.ZERO, Bbar = Point.ZERO, X = Point.ZERO, Y = Point.ZERO] = await mul([
     [A, r1r2, true],
     [Bmsg, r1, true],
     [Bmsg, r1r2, true],
@@ -673,12 +682,12 @@ function* proveSpendBody(
     const u1 = b1.map((b, j) => scalar((1n - b) * (s1[j] ?? 0n)));
     rStar = scalar(s1.reduce((acc, sj, j) => acc + (w[j] ?? 0n) * sj, rn));
     witness.push(...b1, ...s1, ...u1);
-    b1.forEach((b, j) =>
+    for (const [j, b] of b1.entries()) {
       openings.set(FIXED_ELEMENTS + j, [
         [EL_H1, b],
         [EL_H3, s1[j] ?? 0n],
-      ])
-    );
+      ]);
+    }
   } else {
     const rc = blindings[0] ?? 0n;
     comC = cH1.add(blindH3[0] ?? Z);
@@ -691,7 +700,7 @@ function* proveSpendBody(
   }
 
   const relation = spendRelation(params, Aprime, Bbar, Abar, H1prime, Kn, s, a, com1, comC);
-  const pok = yield* prove(
+  const pok = await prove(
     params,
     tag(params, 'Spend', [ctxSpend]),
     relation,
@@ -709,7 +718,7 @@ function* proveSpendBody(
   };
 }
 
-const token = Symbol('VerifiedSpend');
+const token: unique symbol = Symbol('VerifiedSpend');
 
 /**
  * Evidence that a spend passed {@link verifySpend} under a given key and
@@ -750,37 +759,37 @@ export class VerifiedSpend {
   }
 
   /** @internal */
-  static *refund(v: VerifiedSpend, t: bigint, random: Random): Effect<RefundMessage> {
+  static async refund(v: VerifiedSpend, t: bigint, random: Random): Promise<RefundMessage> {
     const params = v.#params;
     checkAmount(params, t);
     if (t > v.s + v.a) throw new ACTError('Amount', 't > s + a');
     const [skM, cx, Kprime] = [v.#skM, v.#cx, v.#Kprime];
-    return yield* once(v, 'verified spend', function* () {
-      const XA = yield* signedMessage(params, t, cx, Kprime);
-      const { A, e, pok } = yield* sign(params, skM, 'Refund', XA, random);
+    return await once(v, 'verified spend', async () => {
+      const XA = await signedMessage(params, t, cx, Kprime);
+      const { A, e, pok } = await sign(params, skM, 'Refund', XA, random);
       return { A, e, t, pok };
     });
   }
 }
 
 /** VerifySpend (Section 4.6.3). Run by the Moderator. */
-function* verifySpendEffect(
+export async function verifySpend(
   params: Params,
   skM: bigint,
   ctxCred: Uint8Array,
   ctxSpend: Uint8Array,
   proof: SpendMessage
-): Effect<VerifiedSpend> {
+): Promise<VerifiedSpend> {
   const { k, s, a, Aprime, Bbar, Kn, com1, comC, pok } = proof;
   spendWeights(params, s, a); // amount checks precede verification (Section 6)
   const cx = context(params, ctxCred);
-  const [Abar = Point.ZERO, kH2 = Point.ZERO] = yield* mulAll([
+  const [Abar = Point.ZERO, kH2 = Point.ZERO] = await mul([
     [Aprime, skM, true],
     [params.H2, k, false],
   ]);
   const H1prime = cx.base.add(kH2);
   const relation = spendRelation(params, Aprime, Bbar, Abar, H1prime, Kn, s, a, com1, comC);
-  yield* verify(tag(params, 'Spend', [ctxSpend]), relation, pok);
+  await verify(tag(params, 'Spend', [ctxSpend]), relation, pok);
   return new VerifiedSpend(token, params, skM, cx, balanceCommitment(params, proof), proof);
 }
 
@@ -794,11 +803,11 @@ function balanceCommitment(params: Params, proof: SpendMessage): Point {
  * IssueRefund (Section 4.6.4). Run by the Moderator, only on the result of
  * a successful {@link verifySpend}, and only once per verified spend.
  */
-function issueRefundEffect(
+export function issueRefund(
   verified: VerifiedSpend,
   t: bigint,
   random: Random = randomBytes
-): Effect<RefundMessage> {
+): Promise<RefundMessage> {
   return VerifiedSpend.refund(verified, t, random);
 }
 
@@ -806,14 +815,14 @@ function issueRefundEffect(
  * FinalizeRefund (Section 4.6.5). Run by the Client; consumes `state` on
  * success. The new Credential has balance c - s + t.
  */
-function* finalizeRefundEffect(
+export async function finalizeRefund(
   params: Params,
   pkM: Point,
   ctxCred: Uint8Array,
   state: ClientSpendState,
   refund: RefundMessage
-): Effect<Credential> {
-  return yield* once(state, 'spend state', function* () {
+): Promise<Credential> {
+  return await once(state, 'spend state', async () => {
     const { kstar, rStar, v1, s, a, Kprime } = state;
     const { t } = refund;
     checkAmount(params, t);
@@ -821,53 +830,10 @@ function* finalizeRefundEffect(
       throw new ACTError('Amount', 'invalid refund amount');
     }
     const cx = context(params, ctxCred);
-    yield* verifySignature('Refund', params, pkM, refund.A, refund.e, t, cx, Kprime, refund.pok);
+    await verifySignature('Refund', params, pkM, refund.A, refund.e, t, cx, Kprime, refund.pok);
     return { k: kstar, c: v1 + t, r: rStar, A: refund.A, e: refund.e };
   });
 }
-
-// ---------------------------------------------------------------------------
-// Entry points. Each algorithm runs synchronously on noble, or
-// asynchronously with variable-base multiplications batched to WebCrypto,
-// which is several times faster where available. Outputs are identical.
-// ---------------------------------------------------------------------------
-
-const sync =
-  <A extends unknown[], R>(f: (...args: A) => Effect<R>) =>
-  (...args: A): R =>
-    runSync(P256, f(...args));
-const async =
-  <A extends unknown[], R>(f: (...args: A) => Effect<R>) =>
-  (...args: A): Promise<R> =>
-    runAsync(P256, f(...args));
-
-/** IssueRequest (Section 4.5.2). Run by the Client. */
-export const issueRequest = sync(issueRequestEffect);
-export const issueRequestAsync = async(issueRequestEffect);
-/** IssueResponse (Section 4.5.3). Run by the Moderator; verifies the request. */
-export const issueResponse = sync(issueResponseEffect);
-export const issueResponseAsync = async(issueResponseEffect);
-/** FinalizeIssue (Section 4.5.4). Run by the Client; consumes `state` on success. */
-export const finalizeIssue = sync(finalizeIssueEffect);
-export const finalizeIssueAsync = async(finalizeIssueEffect);
-/**
- * ProveSpend (Section 4.6.2). Run by the Client; consumes `credential`. The
- * returned state MUST be stored durably before `proof` leaves the Client.
- */
-export const proveSpend = sync(proveSpendEffect);
-export const proveSpendAsync = async(proveSpendEffect);
-/** VerifySpend (Section 4.6.3). Run by the Moderator. */
-export const verifySpend = sync(verifySpendEffect);
-export const verifySpendAsync = async(verifySpendEffect);
-/**
- * IssueRefund (Section 4.6.4). Run by the Moderator, only on the result of
- * a successful verifySpend, and only once per verified spend.
- */
-export const issueRefund = sync(issueRefundEffect);
-export const issueRefundAsync = async(issueRefundEffect);
-/** FinalizeRefund (Section 4.6.5). Run by the Client; consumes `state` on success. */
-export const finalizeRefund = sync(finalizeRefundEffect);
-export const finalizeRefundAsync = async(finalizeRefundEffect);
 
 /** Nw, the witness length of a spend with amounts s and a (Section 4.7). */
 export function spendWitnessCount(params: Params, s: bigint, a: bigint): number {

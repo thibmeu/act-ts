@@ -10,9 +10,11 @@ EC-ACT (Anonymous Credit Tokens) + sigma protocols in TypeScript, P-256, interop
 
 ```bash
 npm test              # Vitest (all packages)
-npm run build         # tsup + tsc
-npm run lint          # ESLint + Prettier
-npm run format        # Auto-fix
+npm run build         # tsdown
+npm run typecheck     # tsc (TypeScript 7), src and tests
+npm run lint          # Biome
+npm run examples      # node, no build step
+npm run format        # Biome, auto-fix
 ```
 
 ---
@@ -21,8 +23,8 @@ npm run format        # Auto-fix
 
 | Directory                | Purpose                     |
 | ------------------------ | --------------------------- |
-| `packages/sigma-proofs/` | Sigma protocols (106 tests) |
-| `packages/act-ts/`       | EC-ACT (34 tests)           |
+| `packages/sigma-proofs/` | Sigma protocols (119 tests) |
+| `packages/act-ts/`       | EC-ACT (45 tests)           |
 | `docs/ARCHITECTURE.md`   | Technical design            |
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for system design details.
@@ -88,9 +90,9 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for system design details.
 
 ## Test Patterns
 
-- **Vector files**: `test/vectors/*.json` from IETF specs
+- **Vector files**: `test/vectors/*.txt`, the drafts' `key = value` format (and act-rs's)
 - **Roundtrip tests**: Required for all serialization
-- **Property tests**: `fast-check` for encodings
+- **Property tests**: `test/props.test.ts`, `@fast-check/vitest` `it.prop`; one precise statement per property, fixtures built once, `CRYPTO` run counts for proving/verifying
 - **Parameterized**: sigma-proofs tests run across P-256 and BLS12-381
 - **`it.todo()`**: For blocked features with reason
 
@@ -103,15 +105,17 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for system design details.
 - **Relation layout**: element/scalar order of the Relation blocks is wire-relevant; vectors pin it.
 - **noble `multiply(0n)` throws**: use `mulSmall` (amounts, bits) or rely on `commit`'s `(k+1)P - P`.
 - **L**: balance width, 1..64; amounts are `bigint`.
-- **Effects**: protocol code is written once as generators yielding multiplication batches; `runSync` (noble) and `runAsync` (WebCrypto) drive them. Put every multiplication in a batch (`mulAll`), not inline.
+- **Examples**: `packages/act-ts/examples/*.example.ts` return `Promise<boolean>`, annotated with the draft's message flow; `test/examples.test.ts` runs them.
+- **Modern TypeScript**: TypeScript 7, `.ts` import paths (`rewriteRelativeImportExtensions`), `erasableSyntaxOnly` (no enums, namespaces, parameter properties), `isolatedDeclarations`, `exactOptionalPropertyTypes`. Node runs sources directly.
+- **Async only**: protocol operations and proofs are `async`; there is no sync API. Put every multiplication of a round in one `mulMany` batch, not inline.
 - **Secret scalars in batches**: never dedupe, cache, or special-case them by value (zero, equality); the import count must not depend on secrets (tested).
 
 ---
 
 ## Dependencies
 
-| Package         | Purpose                              |
-| --------------- | ------------------------------------ |
-| `@noble/curves` | P-256, BLS12-381, hash-to-curve, MSM |
-| `@noble/hashes` | SHAKE128, SHA-256                    |
-| `fast-check`    | Property-based testing               |
+| Package                            | Purpose                              |
+| ---------------------------------- | ------------------------------------ |
+| `@noble/curves`                    | P-256, BLS12-381, hash-to-curve, MSM |
+| `@noble/hashes`                    | SHAKE128, SHA-256                    |
+| `fast-check`, `@fast-check/vitest` | Property-based testing               |

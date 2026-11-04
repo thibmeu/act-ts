@@ -1,8 +1,0 @@
-# Build outputs
-dist/
-lib/
-coverage/
-
-# Dependencies
-node_modules/
-

@@ -1,40 +1,33 @@
 /**
  * Sigma protocols for linear relations (draft-irtf-cfrg-sigma-protocols-03)
- * under the Fiat-Shamir transform (draft-irtf-cfrg-fiat-shamir-03).
+ * under the Fiat-Shamir transform (draft-irtf-cfrg-fiat-shamir-03). Provers
+ * and verifiers are asynchronous: their scalar multiplications run in batches
+ * on WebCrypto where the ciphersuite allows it.
  *
  * @module
  */
 
 export {
   BLS12381,
-  P256,
-  SigmaError,
+  type Ciphersuite,
   deserializeElement,
   deserializeScalar,
+  P256,
+  type Point,
   registerFixedBase,
+  SigmaError,
   serializeElement,
   serializeScalar,
-  type Ciphersuite,
-  type Point,
-} from './ciphersuites.js';
-export { LinearRelation, type Equation, type ImageTerm, type Term } from './linear-relation.js';
+} from './ciphersuites.ts';
 export {
   decodeField,
   deriveSessionId,
   proveBatchable,
-  proveBatchableAsync,
-  proveBatchableEffect,
   proveCompact,
-  proveCompactAsync,
-  proveCompactEffect,
   randomNonces,
   spongeInit,
   verifyBatchable,
-  verifyBatchableAsync,
-  verifyBatchableEffect,
   verifyCompact,
-  verifyCompactAsync,
-  verifyCompactEffect,
-} from './fiat-shamir.js';
-export { type Effect, type Job, mulAll, runAsync, runSync } from './effects.js';
-export { mulManyWebCrypto } from './webcrypto.js';
+} from './fiat-shamir.ts';
+export { type Equation, type ImageTerm, LinearRelation, type Term } from './linear-relation.ts';
+export { type Job, mulMany } from './mul.ts';

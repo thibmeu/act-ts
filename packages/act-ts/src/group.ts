@@ -5,22 +5,23 @@
 
 import { expand_message_xmd } from '@noble/curves/abstract/hash-to-curve.js';
 import { mod } from '@noble/curves/abstract/modular.js';
+import type { WeierstrassPointCons } from '@noble/curves/abstract/weierstrass.js';
 import { p256, p256_hasher } from '@noble/curves/nist.js';
 import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/utils.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { concatBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import {
-  P256,
   deserializeElement,
   deserializeScalar,
+  P256,
   type Point as SigmaPoint,
 } from 'sigma-proofs';
-import { ACTError } from './errors.js';
+import { ACTError } from './errors.ts';
 
 export type Point = SigmaPoint;
-export const Point = p256.Point;
+export const Point: WeierstrassPointCons<bigint> = p256.Point;
 /** Group order p. */
-export const ORDER = Point.Fn.ORDER;
+export const ORDER: bigint = Point.Fn.ORDER;
 export const NS = 32;
 export const NE = 33;
 export const NSEED = 48;
@@ -109,18 +110,14 @@ export function deriveNonces(
   return expandScalars(ctx, key, count);
 }
 
-/** G.DeriveKeyPair(seed, info) (Section 4.4). */
-export function deriveKeyPair(
-  ctx: Uint8Array,
-  seed: Uint8Array,
-  info: string
-): { skM: bigint; pkM: Point } {
+/** The secret scalar of G.DeriveKeyPair(seed, info) (Section 4.4). */
+export function deriveKeyScalar(ctx: Uint8Array, seed: Uint8Array, info: string): bigint {
   checkSeed(seed);
   const input = concatBytes(seed, u16Prefixed(utf8ToBytes(info)));
   const DST = dst('DeriveKeyPair-', ctx);
   for (let counter = 0; counter < 256; counter++) {
     const skM = hashToScalar(concatBytes(input, i2osp(counter, 1)), DST);
-    if (skM !== 0n) return { skM, pkM: Point.BASE.multiply(skM) };
+    if (skM !== 0n) return skM;
   }
   throw new ACTError('Derive', 'DeriveKeyPair failed');
 }

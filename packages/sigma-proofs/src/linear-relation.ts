@@ -6,13 +6,13 @@ import { normalizeZ } from '@noble/curves/abstract/curve.js';
 import { mod } from '@noble/curves/abstract/modular.js';
 import {
   type Ciphersuite,
-  type Point,
-  SigmaError,
   deserializeElement,
   deserializeScalar,
+  type Point,
+  SigmaError,
   serializeScalar,
-} from './ciphersuites.js';
-import { type Effect, type Job, mulAll } from './effects.js';
+} from './ciphersuites.ts';
+import { type Job, mulMany } from './mul.ts';
 
 /** (element_index, coeff) */
 export type ImageTerm = readonly [element: number, coeff: bigint];
@@ -36,17 +36,19 @@ function le32(out: number[], value: number): void {
  * further element is registered with {@link addElements}.
  */
 export class LinearRelation {
+  readonly suite: Ciphersuite;
   readonly elements: Point[];
   readonly equations: Equation[] = [];
-  private serialized: Uint8Array | undefined;
+  #serialized: Uint8Array | undefined;
 
-  constructor(readonly suite: Ciphersuite) {
+  constructor(suite: Ciphersuite) {
+    this.suite = suite;
     this.elements = [suite.Point.BASE];
   }
 
   /** Registers group elements; returns the index of the first one. */
   addElements(...points: Point[]): number {
-    this.serialized = undefined;
+    this.#serialized = undefined;
     const first = this.elements.length;
     this.elements.push(...points);
     return first;
@@ -54,7 +56,7 @@ export class LinearRelation {
 
   /** Appends `sum(image) = sum(terms)`. Coefficients are reduced mod p. */
   addEquation(image: readonly ImageTerm[], terms: readonly Term[]): void {
-    this.serialized = undefined;
+    this.#serialized = undefined;
     const p = this.suite.order;
     this.equations.push({
       image: image.map(([e, c]) => [e, mod(c, p)] as const),
@@ -71,7 +73,7 @@ export class LinearRelation {
 
   /** SerializeLinearRelation (Section 3.6). Cached until the relation changes. */
   serialize(): Uint8Array {
-    if (this.serialized) return this.serialized;
+    if (this.#serialized) return this.#serialized;
     const { suite } = this;
     const head: number[] = [];
     const parts: Uint8Array[] = [];
@@ -108,7 +110,7 @@ export class LinearRelation {
       out.set(p, off);
       off += p.length;
     }
-    this.serialized = out;
+    this.#serialized = out;
     return out;
   }
 
@@ -213,10 +215,10 @@ export class LinearRelation {
    * fixed-base multiplications instead of a variable-base one. A wrong
    * opening only produces a proof that fails to verify.
    */
-  *commit(
+  async commit(
     nonces: readonly bigint[],
     openings?: ReadonlyMap<number, readonly ImageTerm[]>
-  ): Effect<Point[]> {
+  ): Promise<Point[]> {
     const p = this.suite.order;
     const sums = this.equations.map(({ terms }) => {
       const byElement = new Map<number, bigint>();
@@ -231,18 +233,18 @@ export class LinearRelation {
       }
       return byElement;
     });
-    return yield* this.evaluate(sums, true);
+    return this.evaluate(sums, true);
   }
 
   /**
    * SimulateCommitment (Section 4.4): map(instance, response) -
    * challenge * image. Only public values are involved.
    */
-  *simulate(
+  async simulate(
     challenge: bigint,
     response: readonly bigint[],
     image: readonly Point[]
-  ): Effect<Point[]> {
+  ): Promise<Point[]> {
     const p = this.suite.order;
     const minusC = mod(-challenge, p);
     const extra: (readonly [Point | undefined, bigint])[] = [];
@@ -261,18 +263,18 @@ export class LinearRelation {
       extra.push(entry);
       return byElement;
     });
-    return yield* this.evaluate(sums, false, extra);
+    return this.evaluate(sums, false, extra);
   }
 
   /**
    * sum_e k_e * elements[e] for every equation, all terms in one batch; the
    * driver picks the backend for each. `extra[i] = [P, k]` adds k * P.
    */
-  private *evaluate(
+  private async evaluate(
     sums: readonly ReadonlyMap<number, bigint>[],
     secret: boolean,
     extra: readonly (readonly [Point | undefined, bigint])[] = []
-  ): Effect<Point[]> {
+  ): Promise<Point[]> {
     const { suite } = this;
     const jobs: Job[] = [];
     const slots: number[][] = [];
@@ -290,7 +292,7 @@ export class LinearRelation {
       slots.push(mine);
       return sum;
     });
-    const results = yield* mulAll(jobs);
+    const results = await mulMany(suite, jobs);
     return acc.map((sum, i) =>
       (slots[i] ?? []).reduce((s, j) => s.add(results[j] ?? suite.Point.ZERO), sum)
     );
