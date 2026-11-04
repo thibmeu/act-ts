@@ -3,88 +3,62 @@
 > **Warning**
 > This software is experimental and has not been audited. The underlying cryptographic specifications are IETF drafts subject to change. Use at your own risk.
 
-TypeScript implementation of Anonymous Credit Tokens (ACT) for privacy-preserving credit systems.
+TypeScript implementation of EC-ACT, Anonymous Credit Tokens: a keyed-verification anonymous credential whose hidden state is a credit balance.
 
-**Specification:** Implements [draft-schlesinger-cfrg-act](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/) and [draft-schlesinger-privacypass-act](https://datatracker.ietf.org/doc/draft-schlesinger-privacypass-act/).
+**Specification:** [draft-schlesinger-mole-ec-act-00](https://datatracker.ietf.org/doc/draft-schlesinger-mole-ec-act/), ciphersuite `P256-SHA256`, interoperable with [act-rs](https://github.com/Moderation-of-unLinkable-Endorsements/act-rs).
 
 **Target Environments:** Browser, Cloudflare Workers, Node.js
 
-## Table of Contents
-
-- [Packages](#packages)
-- [What is ACT?](#what-is-act)
-- [Installation](#installation)
-- [Quick Example](#quick-example)
-- [Development](#development)
-- [Security Considerations](#security-considerations)
-- [Related Projects](#related-projects)
-- [License](#license)
-
 ## Packages
 
-| Package                                     | Description                                                                                                   | Spec                                                                                                     |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [sigma-proofs](./packages/sigma-proofs)     | Sigma protocols for zero-knowledge proofs                                                                     | [draft-irtf-cfrg-sigma-protocols-01](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/)  |
-| [act-ts](./packages/act-ts)                 | Anonymous Credit Tokens core protocol                                                                         | [draft-schlesinger-cfrg-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/)            |
-| [privacypass-ts](./packages/privacypass-ts) | Privacy Pass integration (fork of [@cloudflare/privacypass-ts](https://github.com/cloudflare/privacypass-ts)) | [draft-schlesinger-privacypass-act](https://datatracker.ietf.org/doc/draft-schlesinger-privacypass-act/) |
+| Package                                 | Description                                                 | Spec                                                                                                                                                                                           |
+| --------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [sigma-proofs](./packages/sigma-proofs) | Sigma protocols for linear relations, compact and batchable | [draft-irtf-cfrg-sigma-protocols-03](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/03/), [fiat-shamir-03](https://datatracker.ietf.org/doc/draft-irtf-cfrg-fiat-shamir/03/) |
+| [act-ts](./packages/act-ts)             | EC-ACT credential scheme                                    | [draft-schlesinger-mole-ec-act-00](https://datatracker.ietf.org/doc/draft-schlesinger-mole-ec-act/)                                                                                            |
+
+EC-ACTv1 pins revision -03 of the Sigma and Fiat-Shamir drafts (Section 5); -04 changes the relation serialization and would need a new ciphersuite identifier.
 
 ## What is ACT?
 
-Anonymous Credit Tokens enable privacy-preserving credit systems where:
-
-- **Unlinkability**: Issuer cannot link credit issuance to spending, or connect multiple transactions
-- **Partial Spending**: Spend any amount up to balance, receive anonymous change
-- **Double-Spend Prevention**: Cryptographic nullifiers ensure each token is used only once
-- **Balance Privacy**: Only the spent amount is revealed, not total balance
-
-### Use Cases
-
-- **Rate Limiting**: Issue daily allowances that clients spend anonymously
-- **API Credits**: Pre-paid API access without tracking individual request patterns
-- **Privacy Proxies**: Session-based access control with concurrency enforcement
-
-## Installation
-
-```bash
-# Install individual packages
-npm install sigma-proofs
-npm install act-ts
-```
+A Moderator issues a Credential with a hidden balance. The Client later spends a public amount `s`, proving in zero knowledge that the balance covers it, and receives a refund for the remainder plus a Moderator-chosen return amount `t <= s + a`, where `a` is a top-up allowance declared by the spend. The Moderator never learns the balance, and cannot link a spend to the issuance or refund that produced the Credential, nor two spends to each other. A nullifier revealed by each spend prevents double spending.
 
 ## Quick Example
 
 ```typescript
 import {
-  ristretto255,
-  generateParameters,
-  keyGen,
+  createParams,
+  generateKeys,
   issueRequest,
   issueResponse,
-  verifyIssuance,
+  finalizeIssue,
   proveSpend,
-  verifyAndRefund,
-  constructRefundToken,
-  defaultPRNG,
+  verifySpend,
+  issueRefund,
+  finalizeRefund,
+  encodeSpend,
+  decodeSpend,
 } from 'act-ts';
 
-// Setup
-const group = ristretto255;
-const rng = defaultPRNG;
-const params = generateParameters(group, 'ACT-v1:example:api:prod', 64); // L=64 bits
-const { privateKey: sk, publicKey: pk } = keyGen(group, rng);
+const params = createParams(8); // balances below 2^8
+const { skM, pkM } = generateKeys(params); // Moderator; pkM is published
+const ctxCred = new TextEncoder().encode('epoch-42'); // agreed out of band
 
-// Issuance: Client requests 100 credits
-const ctx = group.scalarFromBigint(0x1234n); // context binding
-const [request, clientState] = issueRequest(params, ctx, rng);
-const response = issueResponse(params, sk, request, 100n, ctx, rng);
-const token = verifyIssuance(params, pk, response, clientState);
+// Issuance
+const { state, request } = issueRequest(params);
+const response = issueResponse(params, skM, ctxCred, 100n, request);
+const credential = finalizeIssue(params, pkM, ctxCred, state, response);
 
-// Spending: Client spends 30 credits
-const [proof, spendState] = proveSpend(params, token, 30n, rng);
-const nullifierDb = new Set<string>();
-const refund = verifyAndRefund(params, sk, proof, nullifierDb, 0n, rng);
-const newToken = constructRefundToken(params, pk, proof, refund, spendState);
-// newToken has 70 credits remaining
+// Spend 30 credits, no top-up, bound to the Moderator's challenge.
+const ctxSpend = new TextEncoder().encode('challenge-digest');
+const spend = proveSpend(params, credential, ctxCred, 30n, 0n, ctxSpend);
+const wire = encodeSpend(spend.proof); // store spend.state durably first
+
+// Moderator: verify, then record verified.nullifier atomically before refunding.
+const verified = verifySpend(params, skM, ctxCred, ctxSpend, decodeSpend(params, wire));
+const refund = issueRefund(verified, 5n);
+
+const next = finalizeRefund(params, pkM, ctxCred, spend.state, refund);
+console.log(next.c); // 75n
 ```
 
 ## Development
@@ -94,35 +68,32 @@ npm install       # Install dependencies
 npm run build     # Build all packages
 npm test          # Run tests
 npm run lint      # Lint and format check
+npm run bench     # Benchmarks
 ```
 
-### Structure
-
-- `packages/sigma-proofs/` — Zero-knowledge proof primitives
-- `packages/act-ts/` — Core ACT protocol
-- `packages/privacypass-ts/` — Privacy Pass integration
-- `docs/ARCHITECTURE.md` — Technical design
+Conformance: act-ts replays the draft's Appendix A and every act-rs vector file (L = 1, 2, 4, 8, 16, 64) byte for byte; sigma-proofs passes all 75 vectors of sigma-protocols-03 Appendix A, including adversarial ones, and reproduces every valid proof byte for byte.
 
 ## Security Considerations
 
-This software has not been audited. Please use at your sole discretion. With this in mind, act-ts security relies on the following:
+This software has not been audited. Please use at your sole discretion. act-ts security relies on:
 
-- [Anonymous Credit Tokens](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/) specification by Samuel Schlesinger and Jonathan Katz, based on keyed-verification anonymous credentials and BBS-style signatures
-- [Sigma Protocols](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/) specification for zero-knowledge proofs
-- [@noble/curves](https://github.com/paulmillr/noble-curves) for elliptic curve operations (Ristretto255, P-256)
-- [@noble/hashes](https://github.com/paulmillr/noble-hashes) for cryptographic hash functions
+- [EC-ACT](https://datatracker.ietf.org/doc/draft-schlesinger-mole-ec-act/) and [EC-IHAT](https://datatracker.ietf.org/doc/draft-ladd-mole-ec-ihat/) (group and derivation functions)
+- [Sigma Protocols](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/) and [Fiat-Shamir](https://datatracker.ietf.org/doc/draft-irtf-cfrg-fiat-shamir/)
+- [@noble/curves](https://github.com/paulmillr/noble-curves) for P-256 and hash-to-curve, [@noble/hashes](https://github.com/paulmillr/noble-hashes) for SHA-256 and SHAKE128
+
+The deployment remains responsible for the nullifier store (record each nullifier atomically, failing if present, before releasing a refund), for storing the Client's spend state durably before the spend leaves the Client, and for a coarse credential context (Section 6 of the draft). Within a process, act-ts refuses to reuse a Credential, a Client state, or a verified spend.
 
 ### Limitations
 
-- **Not quantum-resistant**: Based on discrete logarithm assumptions
-- **Draft specifications**: Protocol may change before standardization
-- **No constant-time guarantees**: JavaScript runtime limitations (see [@noble/curves documentation](https://github.com/paulmillr/noble-curves#security))
+- **Not quantum-resistant**: based on discrete logarithm assumptions
+- **Draft specifications**: the protocol may change before standardization
+- **No constant-time guarantees**: JavaScript BigInt is not constant time (see [@noble/curves](https://github.com/paulmillr/noble-curves#security)); secret-dependent branches are avoided on a best-effort basis
+- **No secret zeroization**: JavaScript cannot reliably wipe BigInt values
 
 ## Related Projects
 
-- [anonymous-credit-tokens](https://github.com/AquilaCrypto/anonymous-credit-tokens) - Rust reference implementation
-- [privacypass-ts](https://github.com/cloudflare/privacypass-ts) - Privacy Pass TypeScript library
-- [Privacy Pass](https://www.rfc-editor.org/rfc/rfc9576.html) - RFC 9576 architecture
+- [act-rs](https://github.com/Moderation-of-unLinkable-Endorsements/act-rs) - Rust implementation
+- [MOLE drafts](https://github.com/Moderation-of-unLinkable-Endorsements/internet-drafts)
 
 ## License
 

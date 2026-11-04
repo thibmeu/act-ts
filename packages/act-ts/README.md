@@ -1,192 +1,43 @@
-# act
+# act-ts
 
-Anonymous Credit Tokens (ACT) core protocol in TypeScript.
+EC-ACT, Anonymous Credit Tokens ([draft-schlesinger-mole-ec-act-00](https://datatracker.ietf.org/doc/draft-schlesinger-mole-ec-act/)), ciphersuite `P256-SHA256`, in TypeScript. Interoperable with [act-rs](https://github.com/Moderation-of-unLinkable-Endorsements/act-rs). See the [repository README](../../README.md) for an end-to-end example.
 
-**Specification:** [draft-schlesinger-cfrg-act-01](https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/)
+## API
 
-**Features:**
+| Draft (Section)        | Function                                                  | Run by    |
+| ---------------------- | --------------------------------------------------------- | --------- |
+| Configuration (4.1)    | `createParams(L)`                                         | both      |
+| Key generation (3.4)   | `generateKeys(params)`, `deriveKeys(params, seed, info)`  | Moderator |
+| IssueRequest (4.5.2)   | `issueRequest(params)`                                    | Client    |
+| IssueResponse (4.5.3)  | `issueResponse(params, skM, ctxCred, c, request)`         | Moderator |
+| FinalizeIssue (4.5.4)  | `finalizeIssue(params, pkM, ctxCred, state, response)`    | Client    |
+| ProveSpend (4.6.2)     | `proveSpend(params, credential, ctxCred, s, a, ctxSpend)` | Client    |
+| VerifySpend (4.6.3)    | `verifySpend(params, skM, ctxCred, ctxSpend, proof)`      | Moderator |
+| IssueRefund (4.6.4)    | `issueRefund(verified, t)`                                | Moderator |
+| FinalizeRefund (4.6.5) | `finalizeRefund(params, pkM, ctxCred, state, refund)`     | Client    |
+| Encodings (4.7)        | `encode*` / `decode*` for every message, state, and key   |           |
 
-- Token issuance with BBS-style signatures
-- Partial spending with range proofs
-- Double-spend prevention via nullifiers
-- Balance privacy (only spent amount revealed)
+Each protocol function has an `…Async` twin (`proveSpendAsync`, `verifySpendAsync`, …) returning a promise of the same result, several times faster; see Performance. Amounts are `bigint`. Errors are `ACTError` with the draft's codes (`Deserialize`, `Verify`, `Derive`, `Value`, `Amount`).
 
-## Installation
+`verifySpend` returns a `VerifiedSpend`, the only thing `issueRefund` accepts, so an unverified spend can never be signed. Before refunding, the Moderator must accept the top-up allowance `verified.a` and record `verified.nullifier` atomically, failing if already present. Credentials, Client states, and verified spends are single use within a process.
 
-```bash
-npm install act
-```
+Every randomized function takes an optional `random(n)` source, defaulting to `crypto.getRandomValues`; tests replay the draft's vectors through it.
 
-## Quick Start
+`createParams(L, { protocolContext })` overrides `ctx_proto`. act-rs at the time of writing still uses the pre-publication `ACTv1-P256-SHA256`; pass `new TextEncoder().encode('ACTv1-P256-SHA256')` to interoperate with it. Everything else is identical.
 
-```typescript
-import {
-  generateParams,
-  generateKeyPair,
-  issueRequest,
-  issueResponse,
-  verifyIssuance,
-  proveSpend,
-  verifyAndRefund,
-  constructRefundToken,
-  group,
-} from 'act';
+## Performance
 
-// 1. Setup
-const domainSeparator = 'ACT-v1:example:api:prod:2024-01-15';
-const params = generateParams(domainSeparator, 8); // 8-bit credits (0-255)
-const { sk, pk } = generateKeyPair(params);
-const ctx = group.randomScalar(); // application context
+Every operation has a synchronous form, on [@noble/curves](https://github.com/paulmillr/noble-curves), and an `…Async` form that batches the elliptic-curve multiplications to WebCrypto (ECDH on P-256): native, constant time, and in Node off the main thread. Outputs are identical. Engines without the needed WebCrypto support fall back to noble.
 
-// 2. Issuance: Client requests credits
-const [request, clientState] = issueRequest(params);
-const response = issueResponse(params, sk, request, 100n, ctx);
-const token = verifyIssuance(params, pk, request, response, clientState);
-// token.c === 100n
+Node 26, Intel i7-8650U, against act-rs (`f1bd64b`, as pinned by guac) compiled to wasm and run in the same V8. Ordinary spend (`s > 0`, `a = 0`):
 
-// 3. Spending: Client spends some credits
-const [proof, spendState] = proveSpend(params, token, 30n);
+| Operation        | sync, L = 8 | async, L = 8 | act-rs wasm, L = 8 | async, L = 64 | act-rs wasm, L = 64 |
+| ---------------- | ----------: | -----------: | -----------------: | ------------: | ------------------: |
+| `issueRequest`   |        2 ms |         2 ms |               1 ms |          2 ms |              0.7 ms |
+| `issueResponse`  |       13 ms |         4 ms |               3 ms |          4 ms |                3 ms |
+| `finalizeIssue`  |        9 ms |         2 ms |               2 ms |          2 ms |                2 ms |
+| `proveSpend`     |       45 ms |        15 ms |              18 ms |         84 ms |               94 ms |
+| `verifySpend`    |       73 ms |        11 ms |              19 ms |         75 ms |              114 ms |
+| `finalizeRefund` |        9 ms |         2 ms |               2 ms |          2 ms |                2 ms |
 
-// 4. Verification & Refund: Issuer verifies and issues change
-const nullifierDb = new Set<string>();
-const refund = verifyAndRefund(params, sk, proof, nullifierDb, 0n);
-
-// 5. Client constructs new token with remaining balance
-const newToken = constructRefundToken(params, pk, proof, refund, spendState);
-// newToken.c === 70n
-```
-
-## API Overview
-
-### Setup
-
-```typescript
-// Generate system parameters
-const params = generateParams(domainSeparator: string, L: number);
-// L = bit length for credit values (max 2^L - 1 credits)
-
-// Generate issuer key pair
-const { sk, pk } = generateKeyPair(params);
-```
-
-### Issuance Protocol
-
-```typescript
-// Client: Create blinded request
-const [request, state] = issueRequest(params);
-
-// Issuer: Create signed response
-const response = issueResponse(params, sk, request, credits, ctx);
-
-// Client: Verify and extract token
-const token = verifyIssuance(params, pk, request, response, state);
-```
-
-### Spending Protocol
-
-```typescript
-// Client: Create spend proof
-const [proof, spendState] = proveSpend(params, token, amount);
-
-// Issuer: Verify proof and issue refund
-const refund = verifyAndRefund(params, sk, proof, nullifierDb, returnAmount);
-
-// Client: Construct new token from refund
-const newToken = constructRefundToken(params, pk, proof, refund, spendState);
-```
-
-### Wire Format
-
-```typescript
-import { encodeIssuanceRequest, decodeIssuanceRequest, ... } from 'act';
-
-// Serialize for transmission
-const bytes = encodeIssuanceRequest(request);
-const decoded = decodeIssuanceRequest(bytes);
-```
-
-## Protocol Flow
-
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant I as Issuer
-
-    Note over C,I: Issuance
-    C->>I: IssueRequest (K, proof)
-    I->>C: IssueResponse (A, e, c, proof)
-    Note over C: Verify & store token
-
-    Note over C,I: Spending
-    C->>I: SpendProof (k, s, A', B̄, ...)
-    I->>C: Refund (A*, e*, t, proof)
-    Note over C: Construct new token
-```
-
-## Security Properties
-
-- **Unlinkability**: Issuance cannot be linked to spending (information-theoretic)
-- **Unforgeability**: Cannot spend more credits than issued (q-SDH assumption)
-- **Double-Spend Prevention**: Nullifiers prevent token reuse
-- **Balance Privacy**: Only spent amount revealed, not total balance
-
-## Ciphersuite
-
-**ACT(ristretto255, BLAKE3)** - Current implementation
-
-- Group: Ristretto255 (RFC 9496)
-- Hash: BLAKE3 for Fiat-Shamir
-- Encoding: CBOR
-
-**ACT(ristretto255, SHAKE128)** - Upcoming (sigma-draft-compliance)
-
-- Uses sigma-proofs package for proofs
-- TLS presentation language encoding
-
-## Limitations
-
-- **Not quantum-resistant**: Based on discrete logarithm
-- **Issuer trust**: Issuer can decline refunds (by design for revocation)
-- **Sequential spending**: Each spend requires refund before next spend
-
-## Security Considerations
-
-### Memory Zeroization
-
-JavaScript/TypeScript cannot guarantee memory zeroization. Secret material (blinding factors, private keys, credential data) may persist in memory after use until garbage collected. This is an inherent platform limitation.
-
-**Mitigations:**
-
-- Minimize credential lifetime in memory
-- Use secure enclaves for high-security deployments
-- Consider WebAssembly with explicit memory management for sensitive operations
-
-### Timing Side-Channels
-
-The implementation delegates cryptographic operations to `@noble/curves`, which provides constant-time scalar and point arithmetic. However:
-
-- JavaScript bigint operations may not be constant-time
-- Garbage collection timing may leak information
-- JIT compilation behavior is unpredictable
-
-For high-assurance deployments, consider native implementations.
-
-### State Export
-
-The `export()` / `import()` functions for client state serialize credential secrets in plaintext. Callers must encrypt exported state before storage or transmission.
-
-## Development
-
-```bash
-npm test        # Run tests
-npm run build   # Build package
-```
-
-## Related
-
-- [sigma-proofs](../sigma-proofs) - Underlying proof system
-- [privacypass-act](../privacypass-act) - Privacy Pass integration
-
-## License
-
-Apache-2.0
+Choose the smallest `L` that fits your largest balance.

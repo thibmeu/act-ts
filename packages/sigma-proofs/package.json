@@ -1,7 +1,7 @@
 {
   "name": "sigma-proofs",
   "version": "0.1.0",
-  "description": "Sigma Protocols for Zero-Knowledge Proofs (draft-irtf-cfrg-sigma-protocols)",
+  "description": "Sigma protocols for linear relations (draft-irtf-cfrg-sigma-protocols-03)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,7 +25,6 @@
     "zero-knowledge",
     "proofs",
     "cryptography",
-    "schnorr",
     "ietf"
   ],
   "repository": {

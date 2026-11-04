@@ -1,147 +1,57 @@
 # Architecture
 
-Technical design of act-ts packages.
-
----
-
-## Package Overview
-
 ```
 packages/
-  sigma-proofs/       # draft-irtf-cfrg-sigma-protocols-01
-  act-ts/             # draft-schlesinger-cfrg-act-01
+  sigma-proofs/   # draft-irtf-cfrg-sigma-protocols-03 + fiat-shamir-03
+  act-ts/         # draft-schlesinger-mole-ec-act-00 (EC-ACT), P256-SHA256
 ```
 
-Dependency graph: `act-ts` → `sigma-proofs`
+`act-ts` depends on `sigma-proofs`; both use `@noble/curves` and `@noble/hashes` only.
 
----
+## sigma-proofs
 
-## Sigma Proofs
+| File                 | Spec                         | Contents                                                                  |
+| -------------------- | ---------------------------- | ------------------------------------------------------------------------- |
+| `ciphersuites.ts`    | sigma §8                     | P-256 and BLS12-381 G1 suites; scalar and element codecs                  |
+| `linear-relation.ts` | sigma §3, §4.2, §4.4         | `LinearRelation`: serialize/deserialize, `validate`, `commit`, `simulate` |
+| `fiat-shamir.ts`     | sigma §5, fiat-shamir §3, §5 | `deriveSessionId`, compact and batchable prove/verify                     |
 
-Implements LinearRelation-based API from draft-irtf-cfrg-sigma-protocols-01.
+A relation is sparse: equations of image terms `(element, coeff)` and terms `(scalar, element, coeff)`, with the generator at element index 0. The XOF duplex sponge is used for one absorb-then-squeeze, which is SHAKE128 over `session_id || 0^136 || data`.
 
-### Core Types
+### Sync and async from one implementation
 
-| Type                | Purpose                                                           |
-| ------------------- | ----------------------------------------------------------------- |
-| `LinearMap`         | Sparse matrix (Yale/CSR format) for efficient coefficient storage |
-| `LinearCombination` | Single row of LinearMap; `sum(coeff_i * var_i)`                   |
-| `LinearRelation`    | Constraint system builder; manages scalar/element allocation      |
-| `SchnorrProof`      | Sigma protocol: commit → challenge → respond → verify             |
+Prove and verify, and every ACT operation, are generators (`Effect<R>`) that yield batches of scalar multiplications (`Job`: point, scalar, secret?, equation group) and receive the products. `runSync` executes batches on noble; `runAsync` hands them to the suite's native backend, `mulManyWebCrypto` for P-256 (`webcrypto.ts`):
 
-### Constraint System
+- ECDH `deriveBits(k, Q)` gives `x(k·Q)` natively. Importing `k` (PKCS#8) and exporting it as JWK yields `K = k·G`; with `x(k·(Q+G)) = x(k·Q + K)`, the addition formula gives `y` with one division (batched), no square root. A job on `G` is free.
+- Cost per distinct scalar is one import (~120 µs, main thread); per distinct point two public imports (cached per point object, so generators are imported once). Derivations run off the main thread in Node.
+- Public scalars `k` and `p − k` share one import. **Secret scalars are never shared or special-cased**: a secret `k` is computed as `(k+1)·Q − Q`, so zero (a hidden bit) takes the same path, and equal secrets are imported separately. `test/protocol.test.ts` checks that a spend's import count does not depend on the balance.
+- Any failure (engine without the formats, identity results, a point off the curve) falls back to noble per job.
 
-```typescript
-// Proving knowledge of x such that Y = x·G
-const relation = new LinearRelation(suite);
-const [x] = relation.allocate_scalars(1); // witness
-const [Y] = relation.allocate_elements([Y]); // public
-relation.append_equation(
-  new LinearCombination([[x, 1n]]), // x
-  [[0, G]] // G (generator at index 0)
-);
-```
+`runSync` merges jobs on the same point within an equation (one multiplication); the WebCrypto backend keeps them apart to share scalars such as the challenge across equations.
 
-### Ciphersuites
+Other performance choices, all generic:
 
-| Suite        | Curve      | Hash       | Use               |
-| ------------ | ---------- | ---------- | ----------------- |
-| P256         | NIST P-256 | SHA-512    | Spec test vectors |
-| Ristretto255 | Curve25519 | Blake3 XOF | ACT protocol      |
+- `commit` merges terms per element, so each distinct base costs one constant-time multiplication. Optional prover _openings_ expand an element into a known representation, so the prover multiplies only fixed bases.
+- `simulate` merges terms per element; a single-term image is emitted in the same equation group (see above).
+- In `validate`, coefficient −1 is a negation, not a 256-bit multiplication.
+- `serialize` normalizes all elements with one batched inversion and is cached.
 
----
+## act-ts
 
-## ACT
+| File       | Spec                         | Contents                                                        |
+| ---------- | ---------------------------- | --------------------------------------------------------------- |
+| `group.ts` | EC-IHAT §3.1, §4.2–4.4, §7.1 | HashToGroup/Scalar, DeriveScalars/Nonces, DeriveKeyPair, codecs |
+| `act.ts`   | EC-ACT §4                    | Configuration, relations, issuance, spending, refunds           |
+| `wire.ts`  | EC-ACT §4.7                  | Message, state, Credential, and key encodings                   |
 
-Anonymous Credit Tokens per draft-schlesinger-cfrg-act-01.
+The three relations (Commitment, Signature, Spend) are compiled with the element and scalar order of the draft's Relation blocks; that order is what `SerializeLinearRelation`, and so every proof, depends on. Generators H1–H4 carry noble fixed-base tables (window 8). Each operation batches all its multiplications in as few rounds as its data dependencies allow (`proveSpend`: fixed-base products, then the rerandomization, then the commitment). `B + ctx·H4` is cached per configuration and credential context; `K'` is computed as `K_n + Σ wⱼ·Com1[j]` (additions only); a bit times H1 is a branch-free select.
 
-### Protocol Flow
+Randomness: every algorithm draws `random(48)` seeds and derives its scalars (`DeriveScalars`), its signing exponent and its prover nonces (`DeriveNonces` over the secret, the session, and the relation). Replaying the seeds reproduces every output, which the vector tests rely on.
 
-```
-┌─────────┐                          ┌─────────┐
-│  Client │                          │  Issuer │
-└────┬────┘                          └────┬────┘
-     │                                    │
-     │ ─────── PreIssuance.new() ──────►  │
-     │                                    │
-     │ ◄─────── (internal state) ───────  │
-     │                                    │
-     │ ─────── IssuanceRequest ─────────► │
-     │         (with proof of knowledge)  │
-     │                                    │
-     │ ◄────── IssuanceResponse ───────── │
-     │         (with proof of correctness)│
-     │                                    │
-     │ ─────── CreditToken.finalize() ──► │
-     │                                    │
-     │ ��────── SpendProof ──────────────► │
-     │         (with range proof)         │
-     │                                    │
-```
+## Tests
 
-### Key Types
-
-| Type               | Role                                           |
-| ------------------ | ---------------------------------------------- |
-| `PreIssuance`      | Client-side state before request               |
-| `IssuanceRequest`  | Blinded request + proof of knowledge of (k, r) |
-| `IssuanceResponse` | Issuer signature + proof of correctness        |
-| `CreditToken`      | Unblinded token with credit value              |
-| `SpendProof`       | Proof of valid spend (amount ≤ balance)        |
-| `PreRefund`        | State for partial refund                       |
-| `Refund`           | New token with remaining balance               |
-
-### Sigma Proof Integration
-
-ACT uses sigma proofs for:
-
-1. **Issuance Request**: Knowledge of blinding factors (k, r)
-2. **Issuance Response**: BBS+ signature computed correctly
-3. **Spend Proof**: Range proof via binary decomposition
-4. **Refund Proof**: New token derived correctly from old
-
----
-
-## Security Considerations
-
-### Constant-Time Caveat
-
-From noble-curves documentation:
-
-> "JIT-compiler and Garbage Collector make 'constant time' extremely hard to achieve in JS."
-
-This implementation is for **demonstration and interoperability testing**, not high-security production deployment without a native cryptographic backend.
-
-### Sensitive Material
-
-- Scalars (private keys, blinding factors) should be zeroed after use where possible
-- Error messages must not leak sensitive values
-- Timing of error paths should not vary based on secret data
-
----
-
-## Performance
-
-### Implemented Optimizations (T1+T2)
-
-- **T1.1**: Memoized `getInstanceLabel()` in LinearRelation
-- **T1.2**: H3 power doubling chain (L-1 doublings vs L scalar muls)
-- **T1.3**: Pre-sized arrays in `proveSpend`
-- **T2.1**: Cached one/zero scalars per group via WeakMap
-- **T2.2**: Pre-convert bit arrays to scalar arrays
-
-Results for L=64: proveSpend +12%, verifySpend +13%, full flow +39%.
-
-### Evaluated but Not Implemented
-
-- **Batch LinearMap MSMs**: Standard Pippenger returns single sum, not per-equation results. Would require deep @noble/curves modifications.
-- **Precomputed tables for H1-H4**: Tested with `RistrettoPoint.precompute()`. Only ~5% speedup on scalar multiply, and ACT only does one H1.multiply per proof. Most H\* usage is via MSM which doesn't benefit from per-point precompute.
-
----
-
-## Dependencies
-
-| Package         | Purpose                                      |
-| --------------- | -------------------------------------------- |
-| `@noble/curves` | Ristretto255, P-256, scalar/point arithmetic |
-| `@noble/hashes` | Blake3 (XOF), SHA-512                        |
+| Test                                | Source                                                     |
+| ----------------------------------- | ---------------------------------------------------------- |
+| `sigma-proofs/test/vectors.test.ts` | sigma-protocols-03 Appendix A, 75 vectors, re-proven       |
+| `act-ts/test/vectors.test.ts`       | EC-ACT-00 Appendix A (L = 4) and act-rs vectors (L = 1–64) |
+| `act-ts/test/protocol.test.ts`      | Flows, binding, amounts, single use, decoding              |

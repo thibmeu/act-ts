@@ -1,33 +1,24 @@
 /**
- * ACT Protocol Errors
+ * Errors of draft-schlesinger-mole-ec-act-00, Section 3.2.
  */
+export type ACTErrorCode =
+  /** A byte string is not a canonical encoding. */
+  | 'Deserialize'
+  /** A received value failed a verification check. */
+  | 'Verify'
+  /** A derivation produced an unusable scalar (negligible probability). */
+  | 'Derive'
+  /** An input has an invalid length or is outside its permitted range. */
+  | 'Value'
+  /** A credit amount is outside its permitted range. */
+  | 'Amount';
 
-/**
- * Error codes for ACT protocol operations
- */
-export enum ACTErrorCode {
-  InvalidIssuanceRequestProof = 1,
-  InvalidIssuanceResponseProof = 2,
-  InvalidSpendProof = 3,
-  InvalidRefundProof = 4,
-  DoubleSpend = 5,
-  InvalidAmount = 6,
-  AmountTooBig = 7,
-  ScalarOutOfRange = 8,
-  IdentityPoint = 9,
-  InvalidParameter = 10,
-  InvalidRefundAmount = 11,
-}
-
-/**
- * Error type for ACT protocol operations
- */
 export class ACTError extends Error {
+  override name = 'ACTError';
   constructor(
-    message: string,
-    readonly code: ACTErrorCode
+    readonly code: ACTErrorCode,
+    message: string
   ) {
-    super(message);
-    this.name = 'ACTError';
+    super(`${code}: ${message}`);
   }
 }

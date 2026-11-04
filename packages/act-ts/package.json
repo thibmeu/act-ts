@@ -1,7 +1,7 @@
 {
   "name": "act-ts",
   "version": "0.1.0",
-  "description": "Anonymous Credit Tokens (draft-schlesinger-cfrg-act)",
+  "description": "Anonymous Credit Tokens (draft-schlesinger-mole-ec-act)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,12 +16,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup && tsc -p tsconfig.dts.json",
-    "build:js": "tsup",
-    "build:dts": "tsc -p tsconfig.dts.json",
+    "build": "tsup src/index.ts --format esm --dts --clean",
     "test": "vitest",
-    "bench": "vitest bench",
-    "examples": "tsx examples/index.ts"
+    "bench": "vitest bench"
   },
   "keywords": [
     "anonymous",
@@ -43,7 +40,6 @@
     "sigma-proofs": "0.1.0"
   },
   "devDependencies": {
-    "tsx": "4.21.0",
     "vitest": "4.1.0"
   }
 }

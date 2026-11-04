@@ -1,70 +1,45 @@
 /**
- * Anonymous Credit Tokens (ACT)
- *
- * Implementation of draft-schlesinger-cfrg-act-01
- * using draft-irtf-cfrg-sigma-protocols-01 and draft-irtf-cfrg-fiat-shamir-01.
+ * EC-ACT: Anonymous Credit Tokens (draft-schlesinger-mole-ec-act-00) over
+ * P-256, with compact Sigma proofs (draft-irtf-cfrg-sigma-protocols-03).
  *
  * @module
  */
 
-// Re-export sigma-proofs group for convenience
-export { ristretto255 } from 'sigma-proofs';
-export type { Scalar, GroupElement } from 'sigma-proofs';
-
-// Core types
-export type { SystemParams } from './params.js';
-export type { PRNG } from './rng.js';
-export type { KeyPair } from './encoding.js';
-
-// Errors
-export { ACTError, ACTErrorCode } from './errors.js';
-
-// System parameters
 export {
-  generateParameters,
-  setGenerators,
-  validateDomainSeparator,
-  createDomainSeparator,
-} from './params.js';
-
-// Key generation
-export { keyGen, derivePublicKey } from './keygen.js';
-
-// Issuance protocol
-export {
-  issueRequest,
-  issueResponse,
-  verifyIssuance,
-  serializeProof,
-  deserializeProof,
-} from './issuance.js';
-
-// Spending protocol
-export {
-  proveSpend,
-  verifySpendProof,
+  IDENTIFIER,
+  MAX_BIT_LENGTH,
+  VerifiedSpend,
+  contextScalar,
+  createParams,
+  createProtocolContext,
+  deriveKeys,
+  finalizeIssue,
+  finalizeIssueAsync,
+  finalizeRefund,
+  finalizeRefundAsync,
+  generateKeys,
   issueRefund,
-  constructRefundToken,
-  verifyAndRefund,
-  getSpendInstanceLabel,
-} from './spend.js';
-
-// Serialization namespaces (TLS wire format)
-export {
-  PrivateKey,
-  PublicKey,
-  IssuanceRequest,
-  IssuanceResponse,
-  SpendProof,
-  Refund,
-  CreditToken,
-  IssuanceState,
-  SpendState,
-  EncodingError,
-  EncodingErrorCode,
-} from './encoding.js';
-
-// RNG implementations
-export { WebCryptoPRNG, SeededPRNGForTestingOnly, defaultPRNG, toHex } from './rng.js';
-
-export const VERSION = '0.1.0';
+  issueRefundAsync,
+  issueRequest,
+  issueRequestAsync,
+  issueResponse,
+  issueResponseAsync,
+  proveSpend,
+  proveSpendAsync,
+  rangeWeights,
+  verifySpend,
+  verifySpendAsync,
+  type ClientIssuanceState,
+  type ClientSpendState,
+  type Credential,
+  type IssueRequestMessage,
+  type IssueResponseMessage,
+  type KeyPair,
+  type Params,
+  type Random,
+  type RefundMessage,
+  type SpendMessage,
+} from './act.js';
+export { ACTError, type ACTErrorCode } from './errors.js';
+export type { Point } from './group.js';
+export * from './wire.js';
