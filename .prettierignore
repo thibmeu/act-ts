@@ -6,5 +6,3 @@ coverage/
 # Dependencies
 node_modules/
 
-# Submodule artifacts (privacypass-ts has its own formatting)
-packages/privacypass-ts/

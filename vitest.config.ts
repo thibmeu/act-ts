@@ -6,11 +6,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],
       include: ['packages/*/src/**/*.ts'],
-      exclude: [
-        'packages/*/src/**/*.test.ts',
-        'packages/*/src/**/index.ts',
-        'packages/privacypass-act/**',
-      ],
+      exclude: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/index.ts'],
     },
     testTimeout: 30000,
   },
