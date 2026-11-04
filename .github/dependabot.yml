@@ -8,9 +8,9 @@ updates:
     groups:
       dev-dependencies:
         patterns:
-          - '*'
+          - "*"
     commit-message:
-      prefix: 'deps'
+      prefix: "deps"
 
   # sigma-proofs package
   - package-ecosystem: npm
@@ -20,9 +20,9 @@ updates:
     groups:
       all-dependencies:
         patterns:
-          - '*'
+          - "*"
     commit-message:
-      prefix: 'deps(sigma-proofs)'
+      prefix: "deps(sigma-proofs)"
 
   # act-ts package
   - package-ecosystem: npm
@@ -32,9 +32,9 @@ updates:
     groups:
       all-dependencies:
         patterns:
-          - '*'
+          - "*"
     commit-message:
-      prefix: 'deps(act-ts)'
+      prefix: "deps(act-ts)"
 
   # GitHub Actions
   - package-ecosystem: github-actions
@@ -44,6 +44,6 @@ updates:
     groups:
       actions:
         patterns:
-          - '*'
+          - "*"
     commit-message:
-      prefix: 'deps(ci)'
+      prefix: "deps(ci)"
