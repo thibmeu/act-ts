@@ -34,7 +34,7 @@ Other performance choices, all generic:
 - `commit` merges terms per element, so each distinct base costs one constant-time multiplication. Optional prover _openings_ expand an element into a known representation, so the prover multiplies only fixed bases.
 - `simulate` merges terms per element; a single-term image is emitted in the same equation group (see above).
 - In `validate`, coefficient −1 is a negation, not a 256-bit multiplication.
-- `serialize` normalizes all elements with one batched inversion and is cached.
+- `serialize` normalizes all elements with one batched inversion and returns fresh bytes from the current relation. Proof operations snapshot the relation, session and prover scalars before asynchronous multiplication, keeping the transcript and arithmetic consistent.
 
 ## act-ts
 
@@ -47,6 +47,10 @@ Other performance choices, all generic:
 The three relations (Commitment, Signature, Spend) are compiled with the element and scalar order of the draft's Relation blocks; that order is what `SerializeLinearRelation`, and so every proof, depends on. Generators H1–H4 carry noble fixed-base tables (window 8). Each operation batches all its multiplications in as few rounds as its data dependencies allow (`proveSpend`: fixed-base products, then the rerandomization, then the commitment). `B + ctx·H4` is cached per configuration and credential context; `K'` is computed as `K_n + Σ wⱼ·Com1[j]` (additions only); a bit times H1 is a branch-free select.
 
 Randomness: every algorithm draws `random(48)` seeds and derives its scalars (`DeriveScalars`), its signing exponent and its prover nonces (`DeriveNonces` over the secret, the session, and the relation). Replaying the seeds reproduces every output, which the vector tests rely on.
+
+Secret scalar inversions use noble's `invertCt`, whose control flow depends on the public group order rather than the secret operand. This does not remove JavaScript BigInt timing limitations.
+
+Message and client-state inputs are snapshotted before asynchronous operations. Consumed credential and client-state values are tracked by SHA-256 digests of their fields, including their secrets, so copies and serialization round trips cannot bypass single use. These digests remain for the module lifetime and memory grows with successful consumptions. There is no eviction, because eviction would permit reuse. Object identity still guards verified-spend capabilities. This tracking does not replace the Moderator's durable nullifier store or the wallet's protection against restoration after restart.
 
 ## Tests
 

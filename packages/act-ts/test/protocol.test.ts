@@ -4,12 +4,14 @@ import {
   type Credential,
   createParams,
   decodeCredential,
+  decodeIssuanceState,
   decodeIssueRequest,
   decodeIssueResponse,
   decodeRefund,
   decodeSpend,
   decodeSpendState,
   encodeCredential,
+  encodeIssuanceState,
   encodeIssueRequest,
   encodeIssueResponse,
   encodeRefund,
@@ -125,6 +127,67 @@ describe('flows', () => {
 });
 
 describe('verification binds every input', () => {
+  it.each([
+    ['spend', 1n],
+    ['refresh', 0n],
+  ])('%s authorizes only the snapshotted message', async (_, amount) => {
+    const { state, proof } = await spend(10n, amount);
+    const message = { ...proof, com1: [...proof.com1], pok: proof.pok.slice() };
+    const challenge = ctxSpend.slice();
+    const pending = verifySpend(params, skM, ctxCred, challenge, message);
+    message.Kn = message.Kn.add(params.H1.multiply(100n));
+    message.k = 0n;
+    message.s = 200n;
+    message.a = 1n;
+    message.com1.length = 0;
+    message.comC = params.H1;
+    message.pok.fill(0);
+    challenge.fill(0);
+    const verified = await pending;
+    expect(verified.s).toBe(amount);
+    expect(verified.a).toBe(0n);
+    const refund = await issueRefund(verified, 0n);
+    const next = await finalizeRefund(params, pkM, ctxCred, state, refund);
+    expect(next.c).toBe(10n - amount);
+  });
+
+  it('issuance signs only the request that passed verification', async () => {
+    const { state, request } = await issueRequest(params);
+    const message = { ...request, pok: request.pok.slice() };
+    const pending = issueResponse(params, skM, ctxCred, 10n, message);
+    message.K = params.H1;
+    message.pok.fill(0);
+    const credential = await finalizeIssue(params, pkM, ctxCred, state, await pending);
+    const { proof } = await proveSpend(params, credential, ctxCred, 1n, 0n, ctxSpend);
+    await expect(verifySpend(params, skM, ctxCred, ctxSpend, proof)).resolves.toBeDefined();
+  });
+
+  it('finalization returns the credential that was verified', async () => {
+    const issuance = await issueRequest(params);
+    const state = { ...issuance.state };
+    const response = await issueResponse(params, skM, ctxCred, 10n, issuance.request);
+    const message = { ...response, pok: response.pok.slice() };
+    const pending = finalizeIssue(params, pkM, ctxCred, state, message);
+    state.k = 0n;
+    state.r = 0n;
+    message.c = 200n;
+    message.A = params.H1;
+    message.e = 0n;
+    message.pok.fill(0);
+    const credential = await pending;
+    expect(credential.c).toBe(10n);
+    const spent = await proveSpend(params, credential, ctxCred, 1n, 0n, ctxSpend);
+    const verified = await verifySpend(params, skM, ctxCred, ctxSpend, spent.proof);
+    const refund = { ...(await issueRefund(verified, 0n)) };
+    const next = finalizeRefund(params, pkM, ctxCred, spent.state, refund);
+    refund.A = params.H1;
+    refund.e = 0n;
+    refund.t = 200n;
+    refund.pok.fill(0);
+    const again = await proveSpend(params, await next, ctxCred, 1n, 0n, ctxSpend);
+    await expect(verifySpend(params, skM, ctxCred, ctxSpend, again.proof)).resolves.toBeDefined();
+  });
+
   it('rejects another credential context', async () => {
     const { proof } = await spend();
     expect(await code(() => verifySpend(params, skM, enc('epoch-43'), ctxSpend, proof))).toBe(
@@ -277,11 +340,38 @@ describe('single use (Section 6)', () => {
     );
   });
 
+  it('consumes copied and serialized credential and state values', async () => {
+    const issuance = await issueRequest(params);
+    const storedIssue = encodeIssuanceState(issuance.state);
+    const response = await issueResponse(params, skM, ctxCred, 10n, issuance.request);
+    const credential = await finalizeIssue(params, pkM, ctxCred, issuance.state, response);
+    for (const copy of [{ ...issuance.state }, decodeIssuanceState(storedIssue)]) {
+      await expect(finalizeIssue(params, pkM, ctxCred, copy, response)).rejects.toMatchObject({
+        code: 'Value',
+      });
+    }
+    const storedCredential = encodeCredential(credential);
+    const { state, proof } = await proveSpend(params, credential, ctxCred, 1n, 0n, ctxSpend);
+    for (const copy of [{ ...credential }, decodeCredential(params, storedCredential)]) {
+      await expect(proveSpend(params, copy, ctxCred, 1n, 0n, ctxSpend)).rejects.toMatchObject({
+        code: 'Value',
+      });
+    }
+    const storedSpend = encodeSpendState(state);
+    const refund = await issueRefund(await verifySpend(params, skM, ctxCred, ctxSpend, proof), 0n);
+    await finalizeRefund(params, pkM, ctxCred, state, refund);
+    for (const copy of [{ ...state }, decodeSpendState(params, storedSpend)]) {
+      await expect(finalizeRefund(params, pkM, ctxCred, copy, refund)).rejects.toMatchObject({
+        code: 'Value',
+      });
+    }
+  });
+
   it('refuses concurrent uses of one Credential', async () => {
     const cred = await issue(10n);
     const results = await Promise.allSettled([
       proveSpend(params, cred, ctxCred, 1n, 0n, ctxSpend),
-      proveSpend(params, cred, ctxCred, 1n, 0n, ctxSpend),
+      proveSpend(params, { ...cred }, ctxCred, 1n, 0n, ctxSpend),
     ]);
     expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
   });

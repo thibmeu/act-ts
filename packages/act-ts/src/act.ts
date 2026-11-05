@@ -4,7 +4,8 @@
  * Section numbers in comments refer to that draft unless stated otherwise.
  */
 
-import { mod } from '@noble/curves/abstract/modular.js';
+import { invertCt, mod } from '@noble/curves/abstract/modular.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, concatBytes, randomBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import {
   deriveSessionId,
@@ -147,19 +148,44 @@ export interface RefundMessage {
  * Credentials and states"); this process refuses to use one twice.
  */
 const consumed = new WeakSet<object>();
+// Section 6 requires value consumption, including copies in this process.
+// Retain only digests, for the module lifetime; eviction would permit reuse.
+const consumedValues = new Set<string>();
+
+function valueId(kind: string, scalars: readonly bigint[], point: Point): string {
+  const bytes = concatBytes(
+    utf8ToBytes(kind),
+    ...scalars.map(serializeScalar),
+    serializeElement(point)
+  );
+  try {
+    return bytesToHex(sha256(bytes));
+  } finally {
+    bytes.fill(0);
+  }
+}
 
 /**
  * Runs `body` with `value` claimed: a concurrent or later use fails, and
  * the claim becomes permanent only if `body` succeeds.
  */
-async function once<R>(value: object, what: string, body: () => Promise<R>): Promise<R> {
+async function once<R>(
+  value: object,
+  what: string,
+  body: () => Promise<R>,
+  identity?: string
+): Promise<R> {
   // Claimed before the first await, so concurrent calls cannot both pass.
-  if (consumed.has(value)) throw new ACTError('Value', `${what} was already used`);
+  if (consumed.has(value) || (identity !== undefined && consumedValues.has(identity))) {
+    throw new ACTError('Value', `${what} was already used`);
+  }
   consumed.add(value);
+  if (identity !== undefined) consumedValues.add(identity);
   try {
     return await body();
   } catch (e) {
     consumed.delete(value);
+    if (identity !== undefined) consumedValues.delete(identity);
     throw e;
   }
 }
@@ -172,7 +198,8 @@ const mul = (jobs: readonly Job[]): Promise<Point[]> => mulMany(P256, jobs);
 // ---------------------------------------------------------------------------
 
 const scalar = (x: bigint): bigint => mod(x, ORDER);
-const inv = (x: bigint): bigint => Point.Fn.inv(x);
+// Section 6: secret inversion must not use an operand-dependent Euclidean loop.
+const inv = (x: bigint): bigint => invertCt(x, ORDER);
 
 function maxAmount(params: Params): bigint {
   return (1n << BigInt(params.L)) - 1n;
@@ -559,6 +586,8 @@ export async function issueResponse(
   request: IssueRequestMessage,
   random: Random = randomBytes
 ): Promise<IssueResponseMessage> {
+  request = { ...request, pok: request.pok.slice() };
+  ctxCred = ctxCred.slice();
   checkAmount(params, c);
   await verify(tag(params, 'IssueRequest'), commitmentRelation(params, request.K), request.pok);
   const XA = await signedMessage(params, c, context(params, ctxCred), request.K);
@@ -577,13 +606,21 @@ export async function finalizeIssue(
   state: ClientIssuanceState,
   response: IssueResponseMessage
 ): Promise<Credential> {
-  return await once(state, 'issuance state', async () => {
-    checkAmount(params, response.c);
-    const cx = context(params, ctxCred);
-    const { A, e, c, pok } = response;
-    await verifySignature('IssueResponse', params, pkM, A, e, c, cx, state.K, pok);
-    return { k: state.k, c: response.c, r: state.r, A: response.A, e: response.e };
-  });
+  const original = state;
+  state = { ...state };
+  response = { ...response, pok: response.pok.slice() };
+  return await once(
+    original,
+    'issuance state',
+    async () => {
+      checkAmount(params, response.c);
+      const cx = context(params, ctxCred);
+      const { A, e, c, pok } = response;
+      await verifySignature('IssueResponse', params, pkM, A, e, c, cx, state.K, pok);
+      return { k: state.k, c, r: state.r, A, e };
+    },
+    valueId('issuance', [state.k, state.r], state.K)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -595,7 +632,7 @@ export async function finalizeIssue(
  *
  * The returned state MUST be stored durably before `proof` leaves the Client.
  */
-export function proveSpend(
+export async function proveSpend(
   params: Params,
   credential: Credential,
   ctxCred: Uint8Array,
@@ -604,8 +641,12 @@ export function proveSpend(
   ctxSpend: Uint8Array,
   random: Random = randomBytes
 ): Promise<{ state: ClientSpendState; proof: SpendMessage }> {
-  return once(credential, 'credential', () =>
-    proveSpendBody(params, credential, ctxCred, s, a, ctxSpend, random)
+  const snapshot = { ...credential };
+  return once(
+    credential,
+    'credential',
+    () => proveSpendBody(params, snapshot, ctxCred.slice(), s, a, ctxSpend.slice(), random),
+    valueId('credential', [snapshot.k, snapshot.c, snapshot.r, snapshot.e], snapshot.A)
   );
 }
 
@@ -780,6 +821,9 @@ export async function verifySpend(
   ctxSpend: Uint8Array,
   proof: SpendMessage
 ): Promise<VerifiedSpend> {
+  // Sections 4.6.3–4.6.4: authorize exactly the message checked before any await.
+  proof = { ...proof, com1: [...proof.com1], pok: proof.pok.slice() };
+  ctxSpend = ctxSpend.slice();
   const { k, s, a, Aprime, Bbar, Kn, com1, comC, pok } = proof;
   spendWeights(params, s, a); // amount checks precede verification (Section 6)
   const cx = context(params, ctxCred);
@@ -822,17 +866,25 @@ export async function finalizeRefund(
   state: ClientSpendState,
   refund: RefundMessage
 ): Promise<Credential> {
-  return await once(state, 'spend state', async () => {
-    const { kstar, rStar, v1, s, a, Kprime } = state;
-    const { t } = refund;
-    checkAmount(params, t);
-    if (t > s + a || v1 + t > maxAmount(params)) {
-      throw new ACTError('Amount', 'invalid refund amount');
-    }
-    const cx = context(params, ctxCred);
-    await verifySignature('Refund', params, pkM, refund.A, refund.e, t, cx, Kprime, refund.pok);
-    return { k: kstar, c: v1 + t, r: rStar, A: refund.A, e: refund.e };
-  });
+  const original = state;
+  state = { ...state };
+  refund = { ...refund, pok: refund.pok.slice() };
+  return await once(
+    original,
+    'spend state',
+    async () => {
+      const { kstar, rStar, v1, s, a, Kprime } = state;
+      const { t } = refund;
+      checkAmount(params, t);
+      if (t > s + a || v1 + t > maxAmount(params)) {
+        throw new ACTError('Amount', 'invalid refund amount');
+      }
+      const cx = context(params, ctxCred);
+      await verifySignature('Refund', params, pkM, refund.A, refund.e, t, cx, Kprime, refund.pok);
+      return { k: kstar, c: v1 + t, r: rStar, A: refund.A, e: refund.e };
+    },
+    valueId('spend', [state.kstar, state.rStar, state.v1, state.s, state.a], state.Kprime)
+  );
 }
 
 /** Nw, the witness length of a spend with amounts s and a (Section 4.7). */

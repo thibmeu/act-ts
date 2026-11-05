@@ -39,7 +39,6 @@ export class LinearRelation {
   readonly suite: Ciphersuite;
   readonly elements: Point[];
   readonly equations: Equation[] = [];
-  #serialized: Uint8Array | undefined;
 
   constructor(suite: Ciphersuite) {
     this.suite = suite;
@@ -48,7 +47,6 @@ export class LinearRelation {
 
   /** Registers group elements; returns the index of the first one. */
   addElements(...points: Point[]): number {
-    this.#serialized = undefined;
     const first = this.elements.length;
     this.elements.push(...points);
     return first;
@@ -56,7 +54,6 @@ export class LinearRelation {
 
   /** Appends `sum(image) = sum(terms)`. Coefficients are reduced mod p. */
   addEquation(image: readonly ImageTerm[], terms: readonly Term[]): void {
-    this.#serialized = undefined;
     const p = this.suite.order;
     this.equations.push({
       image: image.map(([e, c]) => [e, mod(c, p)] as const),
@@ -71,9 +68,8 @@ export class LinearRelation {
     return n;
   }
 
-  /** SerializeLinearRelation (Section 3.6). Cached until the relation changes. */
+  /** SerializeLinearRelation (Section 3.6), reflecting the current mutable instance. */
   serialize(): Uint8Array {
-    if (this.#serialized) return this.#serialized;
     const { suite } = this;
     const head: number[] = [];
     const parts: Uint8Array[] = [];
@@ -110,7 +106,6 @@ export class LinearRelation {
       out.set(p, off);
       off += p.length;
     }
-    this.#serialized = out;
     return out;
   }
 

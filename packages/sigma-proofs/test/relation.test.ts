@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   BLS12381,
   deriveSessionId,
+  deserializeScalar,
   type Job,
   LinearRelation,
   P256,
   proveBatchable,
   proveCompact,
   randomNonces,
+  serializeScalar,
   verifyBatchable,
   verifyCompact,
 } from '../src/index.ts';
@@ -43,6 +45,67 @@ describe.each([P256, BLS12381])('$id', (suite) => {
     flipped.set([(flipped.at(-1) ?? 0) ^ 1], flipped.length - 1);
     expect(await verify(sid, build(), flipped)).toBe(false);
   });
+
+  it('does not reuse transcript bytes after changing a relation element', async () => {
+    const rel = new LinearRelation(suite);
+    rel.addElements(suite.Point.BASE.multiply(7n));
+    rel.addEquation([[1, 1n]], [[0, 0, 1n]]);
+    const proof = await proveCompact(sid, rel, [7n]);
+    const c = deserializeScalar(suite, proof.subarray(0, suite.Ns));
+    const z = deserializeScalar(suite, proof.subarray(suite.Ns));
+    rel.elements[1] = suite.Point.BASE.multiply(8n);
+    proof.set(serializeScalar(suite, (z + c) % suite.order), suite.Ns);
+    expect(await verifyCompact(sid, rel, proof)).toBe(false);
+    const fresh = LinearRelation.deserialize(suite, rel.serialize());
+    expect(await verifyCompact(sid, fresh, proof)).toBe(false);
+  });
+
+  it('does not expose mutable transcript storage', async () => {
+    const rel = build();
+    rel.serialize().fill(0);
+    const proof = await proveCompact(sid, rel, [x]);
+    expect(await verifyCompact(sid, build(), proof)).toBe(true);
+  });
+
+  it('serializes direct equation changes', () => {
+    const rel = build();
+    rel.serialize();
+    rel.equations.reverse();
+    const fresh = build();
+    fresh.equations.reverse();
+    expect(rel.serialize()).toEqual(fresh.serialize());
+  });
+
+  for (const [name, prove, verify] of [
+    ['compact', proveCompact, verifyCompact],
+    ['batchable', proveBatchable, verifyBatchable],
+  ] satisfies [string, typeof proveCompact, typeof verifyCompact][]) {
+    it(`${name} snapshots prover inputs before awaiting multiplication`, async () => {
+      const rel = build();
+      const witness = [x];
+      const nonces = randomNonces(suite, 1);
+      const session = sid.slice();
+      const pending = prove(session, rel, witness, nonces);
+      rel.elements[2] = suite.Point.BASE;
+      rel.equations.length = 0;
+      witness[0] = 0n;
+      nonces[0] = 0n;
+      session.fill(0);
+      expect(await verify(sid, build(), await pending)).toBe(true);
+    });
+
+    it(`${name} snapshots verifier inputs before awaiting multiplication`, async () => {
+      const proof = await prove(sid, build(), [x]);
+      const rel = build();
+      const session = sid.slice();
+      const pending = verify(session, rel, proof);
+      rel.elements[2] = suite.Point.BASE;
+      rel.equations.length = 0;
+      session.fill(0);
+      proof.fill(0);
+      expect(await pending).toBe(true);
+    });
+  }
 
   it('rejects invalid instances', () => {
     const rel = new LinearRelation(suite);

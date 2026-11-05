@@ -19,7 +19,7 @@ EC-ACT, Anonymous Credit Tokens ([draft-schlesinger-mole-ec-act-00](https://data
 
 Protocol functions, key generation included, are `async`; encoders and decoders are synchronous. Amounts are `bigint`. Errors are `ACTError` with the draft's codes (`Deserialize`, `Verify`, `Derive`, `Value`, `Amount`).
 
-`verifySpend` returns a `VerifiedSpend`, the only thing `issueRefund` accepts, so an unverified spend can never be signed. Before refunding, the Moderator must accept the top-up allowance `verified.a` and record `verified.nullifier` atomically, failing if already present. Credentials, Client states, and verified spends are single use within a process.
+`verifySpend` returns a `VerifiedSpend`, the only thing `issueRefund` accepts, so an unverified spend can never be signed. Before refunding, the Moderator must accept the top-up allowance `verified.a` and record `verified.nullifier` atomically, failing if already present. Credentials, Client states, and verified spends are single use within a process. Credential and Client-state consumption is tracked by value, including spread copies and serialization round trips. A digest per consumed value is retained for the module lifetime, so memory grows with successful consumptions; restarting or loading another module instance does not preserve this history. Wallets must still prevent reuse after restoration.
 
 Every randomized function takes an optional `random(n)` source, defaulting to `crypto.getRandomValues`; tests replay the draft's vectors through it.
 

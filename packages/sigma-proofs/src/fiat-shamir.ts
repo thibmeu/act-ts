@@ -17,7 +17,20 @@ import {
   SigmaError,
   serializeScalar,
 } from './ciphersuites.ts';
-import type { ImageTerm, LinearRelation } from './linear-relation.ts';
+import { type ImageTerm, LinearRelation, type Term } from './linear-relation.ts';
+
+/** Sections 3.6 and 5.2: bind arithmetic and transcript to one instance across awaits. */
+function snapshotRelation(relation: LinearRelation): LinearRelation {
+  const copy = new LinearRelation({ ...relation.suite });
+  copy.elements.splice(0, copy.elements.length, ...relation.elements);
+  for (const { image, terms } of relation.equations) {
+    copy.equations.push({
+      image: image.map(([e, c]): ImageTerm => [e, c]),
+      terms: terms.map(([s, e, c]): Term => [s, e, c]),
+    });
+  }
+  return copy;
+}
 
 /** SHAKE128 rate R (fiat-shamir Section 9.1). */
 const RATE = 168;
@@ -108,6 +121,10 @@ export async function proveCompact(
   nonces: readonly bigint[] = randomNonces(relation.suite, witness.length),
   openings?: Openings
 ): Promise<Uint8Array> {
+  relation = snapshotRelation(relation);
+  sessionId = sessionId.slice();
+  witness = [...witness];
+  nonces = [...nonces];
   checkProverInputs(relation, witness, nonces);
   const commitments = await relation.commit(nonces, openings);
   const challenge = deriveChallenge(relation, sessionId, commitments);
@@ -124,6 +141,8 @@ export async function verifyCompact(
   proof: Uint8Array
 ): Promise<boolean> {
   try {
+    relation = snapshotRelation(relation);
+    sessionId = sessionId.slice();
     const { suite } = relation;
     const image = relation.validate();
     const n = relation.numScalars;
@@ -149,6 +168,10 @@ export async function proveBatchable(
   nonces: readonly bigint[] = randomNonces(relation.suite, witness.length),
   openings?: Openings
 ): Promise<Uint8Array> {
+  relation = snapshotRelation(relation);
+  sessionId = sessionId.slice();
+  witness = [...witness];
+  nonces = [...nonces];
   checkProverInputs(relation, witness, nonces);
   const commitments = await relation.commit(nonces, openings);
   const challenge = deriveChallenge(relation, sessionId, commitments);
@@ -165,6 +188,8 @@ export async function verifyBatchable(
   proof: Uint8Array
 ): Promise<boolean> {
   try {
+    relation = snapshotRelation(relation);
+    sessionId = sessionId.slice();
     const { suite } = relation;
     const image = relation.validate();
     const m = relation.equations.length;
