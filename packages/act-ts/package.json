@@ -43,6 +43,6 @@
     "sigma-proofs": "0.1.0"
   },
   "devDependencies": {
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   }
 }
